@@ -1,5 +1,7 @@
 # New Political Compass
 
+[Open the live compass](https://akapppy.github.io/New-Political-Compass/)
+
 Interactive political compass visualization for the ideology coordinate dataset in `ideology_coordinates.csv`.
 
 The project includes two versions:
@@ -8,12 +10,6 @@ The project includes two versions:
 - `index.html`: shareable browser version with the same CSV data, search, point selection, pan, zoom, labels, and Voronoi cells.
 
 ## Browser Version
-
-Public page:
-
-```text
-https://akapppy.github.io/New-Political-Compass/
-```
 
 Open `index.html` through a web server so the page can load `ideology_coordinates.csv`.
 
