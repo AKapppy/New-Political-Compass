@@ -9,6 +9,12 @@ The project includes two versions:
 
 ## Browser Version
 
+Public page:
+
+```text
+https://akapppy.github.io/New-Political-Compass/
+```
+
 Open `index.html` through a web server so the page can load `ideology_coordinates.csv`.
 
 ```bash
@@ -21,7 +27,7 @@ Then visit:
 http://localhost:8000/
 ```
 
-The HTML version is ready for GitHub Pages. After pushing the repo to GitHub, enable Pages for the branch that contains `index.html`, then share the generated Pages URL.
+The HTML version is ready for GitHub Pages. After pushing the repo to GitHub, enable Pages for the branch that contains `index.html`.
 
 ## Python Version
 
