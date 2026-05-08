@@ -8,8 +8,8 @@ Required install:
 Run:
     python3 new_political_compass.py
 
-Edit CSV_PATH below if your CSV moves.
-Expected CSV columns:
+Edit CSV_PATH or CSV_CATS below if either CSV moves.
+Expected CSV columns for both files:
     name,x,y,group
 
 Required: name, x, y
@@ -53,6 +53,7 @@ except ImportError as exc:  # pragma: no cover - user environment check
 # -----------------------------------------------------------------------------
 
 CSV_PATH = str(Path(__file__).with_name("ideology_coordinates.csv"))
+CSV_CATS = str(Path(__file__).with_name("ideology_categories.csv"))
 
 APP_TITLE = "New Political Compass"
 WORLD_MIN = -10.0
@@ -82,6 +83,10 @@ SELECTED_COLOR = "#fff176"
 SELECTED_RING = "#ff4081"
 VORONOI_EDGE = "#6d6d6d"
 VORONOI_FILL = "#4fc3f7"
+CATEGORY_EDGE = "#45e56f"
+CATEGORY_FILL = "#27c35a"
+CATEGORY_POINT = "#9ff6b4"
+CATEGORY_TEXT = "#a7f3b9"
 TOOLTIP_BACKGROUND = "#222222"
 TOOLTIP_EDGE = "#eeeeee"
 
@@ -372,10 +377,19 @@ def build_clipped_voronoi_cells(
 
 
 class NewPoliticalCompassApp:
-    def __init__(self, root: tk.Tk, points: Sequence[CompassPoint], warnings: Sequence[str]):
+    def __init__(
+        self,
+        root: tk.Tk,
+        points: Sequence[CompassPoint],
+        warnings: Sequence[str],
+        category_points: Sequence[CompassPoint],
+        category_warnings: Sequence[str],
+    ):
         self.root = root
         self.points = list(points)
         self.warnings = list(warnings)
+        self.category_points = list(category_points)
+        self.category_warnings = list(category_warnings)
 
         self.selected_index: Optional[int] = None
         self.listbox_indices: List[int] = []
@@ -383,8 +397,14 @@ class NewPoliticalCompassApp:
         self.is_dragging = False
 
         self.coord_to_point_indices = self._build_coord_index()
-        self.unique_coords, self.unique_coord_to_point_index = self._build_unique_coords()
+        self.unique_coords, self.unique_coord_to_point_index = self._build_unique_coords(self.points)
         self.voronoi_cells, self.voronoi_warning = build_clipped_voronoi_cells(self.unique_coords)
+        self.category_unique_coords, self.category_unique_coord_to_point_index = self._build_unique_coords(
+            self.category_points
+        )
+        self.category_voronoi_cells, self.category_voronoi_warning = build_clipped_voronoi_cells(
+            self.category_unique_coords
+        )
 
         self.root.title(APP_TITLE)
         self.root.configure(bg=BACKGROUND)
@@ -405,12 +425,26 @@ class NewPoliticalCompassApp:
                 print("-", warning)
             print()
 
+        if self.category_warnings:
+            print("\nCategory CSV warnings:")
+            for warning in self.category_warnings:
+                print("-", warning)
+            print()
+
         if self.voronoi_warning:
             print("Voronoi warning:", self.voronoi_warning)
             messagebox.showwarning(
                 APP_TITLE,
                 "The points loaded, but the Voronoi diagram could not be built.\n\n"
                 + self.voronoi_warning,
+            )
+
+        if self.category_voronoi_warning:
+            print("Category Voronoi warning:", self.category_voronoi_warning)
+            messagebox.showwarning(
+                APP_TITLE,
+                "The category points loaded, but the category Voronoi diagram could not be built.\n\n"
+                + self.category_voronoi_warning,
             )
 
     # ------------------------------------------------------------------
@@ -424,12 +458,14 @@ class NewPoliticalCompassApp:
             coord_index.setdefault(key, []).append(index)
         return coord_index
 
-    def _build_unique_coords(self) -> Tuple[np.ndarray, List[int]]:
+    def _build_unique_coords(
+        self, points: Sequence[CompassPoint]
+    ) -> Tuple[np.ndarray, List[int]]:
         coords: List[Tuple[float, float]] = []
         representative_indices: List[int] = []
         seen: set[Tuple[float, float]] = set()
 
-        for index, point in enumerate(self.points):
+        for index, point in enumerate(points):
             key = (round(point.x, 12), round(point.y, 12))
             if key in seen:
                 continue
@@ -609,6 +645,8 @@ class NewPoliticalCompassApp:
         self.ax.set_ylim(*old_ylim)
 
         self._draw_voronoi_cells()
+        self._draw_category_points()
+        self._draw_category_labels()
         self._draw_points()
         self._draw_labels()
         self._draw_selected_point()
@@ -616,25 +654,15 @@ class NewPoliticalCompassApp:
         self.canvas.draw_idle()
 
     def _draw_voronoi_cells(self) -> None:
-        for unique_index, cell in enumerate(self.voronoi_cells):
-            if not cell:
-                continue
-
-            patch = MplPolygon(
-                cell,
-                closed=True,
-                facecolor=VORONOI_FILL,
-                edgecolor=VORONOI_EDGE,
-                linewidth=0.9,
-                alpha=0.12,
-                zorder=1,
-            )
-            self.ax.add_patch(patch)
-
-            # Future group-coloring logic belongs here:
-            # representative = self.points[self.unique_coord_to_point_index[unique_index]]
-            # if representative.group is not None:
-            #     use a stable color assigned to representative.group
+        self._draw_cell_patches(
+            self.category_voronoi_cells,
+            CATEGORY_FILL,
+            CATEGORY_EDGE,
+            1.4,
+            0.20,
+            0.8,
+        )
+        self._draw_cell_patches(self.voronoi_cells, VORONOI_FILL, VORONOI_EDGE, 0.9, 0.12, 1)
 
         boundary = MplPolygon(
             [
@@ -648,12 +676,33 @@ class NewPoliticalCompassApp:
             edgecolor="#888888",
             linewidth=1.2,
             alpha=0.8,
-            zorder=3,
+            zorder=4,
         )
         self.ax.add_patch(boundary)
 
-        # Future umbrella-region logic belongs after individual cells are available:
-        # merge cells whose CompassPoint.group values match, then draw broader outlines.
+    def _draw_cell_patches(
+        self,
+        cells: Sequence[Optional[List[Tuple[float, float]]]],
+        fill_color: str,
+        edge_color: str,
+        linewidth: float,
+        alpha: float,
+        zorder: float,
+    ) -> None:
+        for cell in cells:
+            if not cell:
+                continue
+
+            patch = MplPolygon(
+                cell,
+                closed=True,
+                facecolor=fill_color,
+                edgecolor=edge_color,
+                linewidth=linewidth,
+                alpha=alpha,
+                zorder=zorder,
+            )
+            self.ax.add_patch(patch)
 
     def _draw_points(self) -> None:
         x_values = [point.x for point in self.points]
@@ -668,6 +717,19 @@ class NewPoliticalCompassApp:
             zorder=5,
         )
 
+    def _draw_category_points(self) -> None:
+        x_values = [point.x for point in self.category_points]
+        y_values = [point.y for point in self.category_points]
+        self.ax.scatter(
+            x_values,
+            y_values,
+            s=58,
+            c=CATEGORY_POINT,
+            edgecolors="#06230d",
+            linewidths=1.0,
+            zorder=4.5,
+        )
+
     def _draw_labels(self) -> None:
         for index, point in enumerate(self.points):
             is_selected = index == self.selected_index
@@ -680,6 +742,20 @@ class NewPoliticalCompassApp:
                 fontweight="bold" if is_selected else "normal",
                 alpha=1.0 if is_selected else 0.82,
                 zorder=7 if is_selected else 6,
+                clip_on=True,
+            )
+
+    def _draw_category_labels(self) -> None:
+        for point in self.category_points:
+            self.ax.text(
+                point.x + 0.12,
+                point.y + 0.12,
+                point.name,
+                color=CATEGORY_TEXT,
+                fontsize=10,
+                fontweight="bold",
+                alpha=0.98,
+                zorder=4.5,
                 clip_on=True,
             )
 
@@ -973,9 +1049,11 @@ class NewPoliticalCompassApp:
 
     def _update_status(self) -> None:
         group_count = sum(1 for point in self.points if point.group)
-        warning_text = f" | {len(self.warnings)} skipped row(s)" if self.warnings else ""
+        skipped_count = len(self.warnings) + len(self.category_warnings)
+        warning_text = f" | {skipped_count} skipped row(s)" if skipped_count else ""
         self.status_var.set(
-            f"{len(self.points)} point(s) loaded | {group_count} with group values{warning_text}"
+            f"{len(self.points)} ideology point(s) | {len(self.category_points)} category point(s) | "
+            f"{group_count} with group values{warning_text}"
         )
 
 
@@ -985,6 +1063,7 @@ def main() -> None:
 
     try:
         points, warnings = load_points(CSV_PATH)
+        category_points, category_warnings = load_points(CSV_CATS)
     except DataLoadError as exc:
         print(exc, file=sys.stderr)
         messagebox.showerror(APP_TITLE, str(exc))
@@ -992,7 +1071,7 @@ def main() -> None:
         return
 
     root.deiconify()
-    app = NewPoliticalCompassApp(root, points, warnings)
+    app = NewPoliticalCompassApp(root, points, warnings, category_points, category_warnings)
     root.mainloop()
 
 
