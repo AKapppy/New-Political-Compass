@@ -53,7 +53,9 @@ except ImportError as exc:  # pragma: no cover - user environment check
 # -----------------------------------------------------------------------------
 
 CSV_PATH = str(Path(__file__).with_name("ideology_coordinates.csv"))
+CSV_PATH2 = str(Path(__file__).with_name("ideology_coordinates2.csv"))
 CSV_CATS = str(Path(__file__).with_name("ideology_categories.csv"))
+CSV_CATS2 = str(Path(__file__).with_name("ideology_categories2.csv"))
 
 APP_TITLE = "New Political Compass"
 WORLD_MIN = -10.0
@@ -100,6 +102,17 @@ class CompassPoint:
     y: float
     group: Optional[str]
     row_number: int
+
+
+@dataclass(frozen=True)
+class CompassDataset:
+    """A matched point/category CSV pair."""
+
+    label: str
+    points: Sequence[CompassPoint]
+    warnings: Sequence[str]
+    category_points: Sequence[CompassPoint]
+    category_warnings: Sequence[str]
 
 
 class DataLoadError(Exception):
@@ -380,31 +393,35 @@ class NewPoliticalCompassApp:
     def __init__(
         self,
         root: tk.Tk,
-        points: Sequence[CompassPoint],
-        warnings: Sequence[str],
-        category_points: Sequence[CompassPoint],
-        category_warnings: Sequence[str],
+        datasets: Sequence[CompassDataset],
     ):
+        if not datasets:
+            raise ValueError("At least one dataset is required.")
+
         self.root = root
-        self.points = list(points)
-        self.warnings = list(warnings)
-        self.category_points = list(category_points)
-        self.category_warnings = list(category_warnings)
+        self.datasets = list(datasets)
+        self.active_dataset_index = 0
+        self.dataset_buttons: List[tk.Button] = []
+        self.warning_notified_dataset_indices: set[int] = set()
+
+        self.points: List[CompassPoint] = []
+        self.warnings: List[str] = []
+        self.category_points: List[CompassPoint] = []
+        self.category_warnings: List[str] = []
+        self.coord_to_point_indices: Dict[Tuple[float, float], List[int]] = {}
+        self.unique_coords = np.empty((0, 2), dtype=float)
+        self.unique_coord_to_point_index: List[int] = []
+        self.voronoi_cells: List[Optional[List[Tuple[float, float]]]] = []
+        self.voronoi_warning: Optional[str] = None
+        self.category_unique_coords = np.empty((0, 2), dtype=float)
+        self.category_unique_coord_to_point_index: List[int] = []
+        self.category_voronoi_cells: List[Optional[List[Tuple[float, float]]]] = []
+        self.category_voronoi_warning: Optional[str] = None
 
         self.selected_index: Optional[int] = None
         self.listbox_indices: List[int] = []
         self.drag_start: Optional[Dict[str, object]] = None
         self.is_dragging = False
-
-        self.coord_to_point_indices = self._build_coord_index()
-        self.unique_coords, self.unique_coord_to_point_index = self._build_unique_coords(self.points)
-        self.voronoi_cells, self.voronoi_warning = build_clipped_voronoi_cells(self.unique_coords)
-        self.category_unique_coords, self.category_unique_coord_to_point_index = self._build_unique_coords(
-            self.category_points
-        )
-        self.category_voronoi_cells, self.category_voronoi_warning = build_clipped_voronoi_cells(
-            self.category_unique_coords
-        )
 
         self.root.title(APP_TITLE)
         self.root.configure(bg=BACKGROUND)
@@ -414,38 +431,13 @@ class NewPoliticalCompassApp:
         self.search_var = tk.StringVar()
         self.status_var = tk.StringVar()
 
+        self._apply_dataset(0)
         self._build_ui()
         self._connect_events()
         self._update_status()
+        self._update_dataset_buttons()
         self.draw_plot()
-
-        if self.warnings:
-            print("\nCSV warnings:")
-            for warning in self.warnings:
-                print("-", warning)
-            print()
-
-        if self.category_warnings:
-            print("\nCategory CSV warnings:")
-            for warning in self.category_warnings:
-                print("-", warning)
-            print()
-
-        if self.voronoi_warning:
-            print("Voronoi warning:", self.voronoi_warning)
-            messagebox.showwarning(
-                APP_TITLE,
-                "The points loaded, but the Voronoi diagram could not be built.\n\n"
-                + self.voronoi_warning,
-            )
-
-        if self.category_voronoi_warning:
-            print("Category Voronoi warning:", self.category_voronoi_warning)
-            messagebox.showwarning(
-                APP_TITLE,
-                "The category points loaded, but the category Voronoi diagram could not be built.\n\n"
-                + self.category_voronoi_warning,
-            )
+        self._notify_active_dataset_warnings()
 
     # ------------------------------------------------------------------
     # Data organization
@@ -475,6 +467,61 @@ class NewPoliticalCompassApp:
 
         return np.asarray(coords, dtype=float), representative_indices
 
+    def _apply_dataset(self, dataset_index: int) -> None:
+        dataset = self.datasets[dataset_index]
+        self.active_dataset_index = dataset_index
+        self.points = list(dataset.points)
+        self.warnings = list(dataset.warnings)
+        self.category_points = list(dataset.category_points)
+        self.category_warnings = list(dataset.category_warnings)
+
+        self.selected_index = None
+        self.listbox_indices = []
+        self.coord_to_point_indices = self._build_coord_index()
+        self.unique_coords, self.unique_coord_to_point_index = self._build_unique_coords(self.points)
+        self.voronoi_cells, self.voronoi_warning = build_clipped_voronoi_cells(self.unique_coords)
+        self.category_unique_coords, self.category_unique_coord_to_point_index = self._build_unique_coords(
+            self.category_points
+        )
+        self.category_voronoi_cells, self.category_voronoi_warning = build_clipped_voronoi_cells(
+            self.category_unique_coords
+        )
+
+    def _notify_active_dataset_warnings(self) -> None:
+        if self.active_dataset_index in self.warning_notified_dataset_indices:
+            return
+
+        dataset_label = self.datasets[self.active_dataset_index].label
+        self.warning_notified_dataset_indices.add(self.active_dataset_index)
+
+        if self.warnings:
+            print(f"\n{dataset_label} CSV warnings:")
+            for warning in self.warnings:
+                print("-", warning)
+            print()
+
+        if self.category_warnings:
+            print(f"\n{dataset_label} category CSV warnings:")
+            for warning in self.category_warnings:
+                print("-", warning)
+            print()
+
+        if self.voronoi_warning:
+            print(f"{dataset_label} Voronoi warning:", self.voronoi_warning)
+            messagebox.showwarning(
+                APP_TITLE,
+                f"{dataset_label} points loaded, but the Voronoi diagram could not be built.\n\n"
+                + self.voronoi_warning,
+            )
+
+        if self.category_voronoi_warning:
+            print(f"{dataset_label} category Voronoi warning:", self.category_voronoi_warning)
+            messagebox.showwarning(
+                APP_TITLE,
+                f"{dataset_label} category points loaded, but the category Voronoi diagram could not be built.\n\n"
+                + self.category_voronoi_warning,
+            )
+
     # ------------------------------------------------------------------
     # UI setup
     # ------------------------------------------------------------------
@@ -490,7 +537,27 @@ class NewPoliticalCompassApp:
             fg=TEXT_COLOR,
             font=("Helvetica Neue", 16, "bold"),
         )
-        title_label.pack(side=tk.LEFT, padx=(0, 18))
+        title_label.pack(side=tk.LEFT, padx=(0, 12))
+
+        tab_frame = tk.Frame(top_frame, bg=PANEL_BACKGROUND)
+        tab_frame.pack(side=tk.LEFT, padx=(0, 18))
+
+        for index, dataset in enumerate(self.datasets):
+            button = tk.Button(
+                tab_frame,
+                text=dataset.label,
+                command=lambda dataset_index=index: self.switch_dataset(dataset_index),
+                bg="#d8d8d8",
+                fg="#111111",
+                activebackground="#eeeeee",
+                activeforeground="#111111",
+                relief=tk.FLAT,
+                font=("Helvetica Neue", 11),
+                padx=10,
+                pady=2,
+            )
+            button.pack(side=tk.LEFT, padx=(0 if index == 0 else 2, 0))
+            self.dataset_buttons.append(button)
 
         search_label = tk.Label(
             top_frame,
@@ -517,10 +584,10 @@ class NewPoliticalCompassApp:
             top_frame,
             text="Clear",
             command=self.clear_selection,
-            bg="#2b2b2b",
-            fg=TEXT_COLOR,
-            activebackground="#3a3a3a",
-            activeforeground=TEXT_COLOR,
+            bg="#d8d8d8",
+            fg="#111111",
+            activebackground="#eeeeee",
+            activeforeground="#111111",
             relief=tk.FLAT,
             font=("Helvetica Neue", 11),
             padx=10,
@@ -597,6 +664,35 @@ class NewPoliticalCompassApp:
         self.search_entry.bind("<Return>", self._on_search_enter)
         self.search_entry.bind("<Escape>", self._on_escape)
         self.root.bind("<Escape>", self._on_escape)
+
+    def switch_dataset(self, dataset_index: int) -> None:
+        if dataset_index == self.active_dataset_index:
+            return
+
+        self._apply_dataset(dataset_index)
+        self.search_var.set("")
+        self.results_listbox.delete(0, tk.END)
+        self._update_status()
+        self._update_dataset_buttons()
+        self.draw_plot(keep_view=True)
+        self._notify_active_dataset_warnings()
+
+    def _update_dataset_buttons(self) -> None:
+        for index, button in enumerate(self.dataset_buttons):
+            if index == self.active_dataset_index:
+                button.configure(
+                    bg=SELECTED_RING,
+                    fg="#111111",
+                    activebackground=SELECTED_RING,
+                    activeforeground="#111111",
+                )
+            else:
+                button.configure(
+                    bg="#d8d8d8",
+                    fg="#111111",
+                    activebackground="#eeeeee",
+                    activeforeground="#111111",
+                )
 
     def _connect_events(self) -> None:
         self.canvas.mpl_connect("scroll_event", self._on_scroll)
@@ -1048,11 +1144,12 @@ class NewPoliticalCompassApp:
     # ------------------------------------------------------------------
 
     def _update_status(self) -> None:
+        dataset_label = self.datasets[self.active_dataset_index].label
         group_count = sum(1 for point in self.points if point.group)
         skipped_count = len(self.warnings) + len(self.category_warnings)
         warning_text = f" | {skipped_count} skipped row(s)" if skipped_count else ""
         self.status_var.set(
-            f"{len(self.points)} ideology point(s) | {len(self.category_points)} category point(s) | "
+            f"{dataset_label} | {len(self.points)} ideology point(s) | {len(self.category_points)} category point(s) | "
             f"{group_count} with group values{warning_text}"
         )
 
@@ -1062,16 +1159,35 @@ def main() -> None:
     root.withdraw()
 
     try:
-        points, warnings = load_points(CSV_PATH)
-        category_points, category_warnings = load_points(CSV_CATS)
+        original_points, original_warnings = load_points(CSV_PATH)
+        original_category_points, original_category_warnings = load_points(CSV_CATS)
+        new_points, new_warnings = load_points(CSV_PATH2)
+        new_category_points, new_category_warnings = load_points(CSV_CATS2)
     except DataLoadError as exc:
         print(exc, file=sys.stderr)
         messagebox.showerror(APP_TITLE, str(exc))
         root.destroy()
         return
 
+    datasets = [
+        CompassDataset(
+            label="Original",
+            points=original_points,
+            warnings=original_warnings,
+            category_points=original_category_points,
+            category_warnings=original_category_warnings,
+        ),
+        CompassDataset(
+            label="New",
+            points=new_points,
+            warnings=new_warnings,
+            category_points=new_category_points,
+            category_warnings=new_category_warnings,
+        ),
+    ]
+
     root.deiconify()
-    app = NewPoliticalCompassApp(root, points, warnings, category_points, category_warnings)
+    app = NewPoliticalCompassApp(root, datasets)
     root.mainloop()
 
 

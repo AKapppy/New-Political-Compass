@@ -63,7 +63,7 @@
 
     .topbar {
       display: grid;
-      grid-template-columns: auto minmax(220px, 420px) auto 1fr auto;
+      grid-template-columns: auto auto auto minmax(220px, 420px) auto 1fr;
       align-items: center;
       gap: 10px;
       padding: 8px 10px;
@@ -76,6 +76,39 @@
       font-size: 16px;
       font-weight: 700;
       white-space: nowrap;
+    }
+
+    .tabs {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .tab {
+      min-height: 30px;
+      padding: 5px 10px;
+      border: 1px solid #333333;
+      border-radius: 4px;
+      background: #d8d8d8;
+      color: #111111;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .tab:hover {
+      background: #eeeeee;
+    }
+
+    .tab.active {
+      border-color: var(--selected-ring);
+      background: var(--selected-ring);
+      color: #111111;
+    }
+
+    .tab:focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
     }
 
     .search-label {
@@ -111,14 +144,14 @@
       padding: 5px 10px;
       border: 1px solid #333333;
       border-radius: 4px;
-      background: #2b2b2b;
-      color: var(--text);
+      background: #d8d8d8;
+      color: #111111;
       cursor: pointer;
       white-space: nowrap;
     }
 
     .button:hover {
-      background: #3a3a3a;
+      background: #eeeeee;
     }
 
     .button:focus-visible {
@@ -392,6 +425,10 @@
         font-size: 16px;
       }
 
+      .tabs {
+        grid-column: 1 / -1;
+      }
+
       .search-label {
         display: none;
       }
@@ -450,6 +487,7 @@
   <main class="app">
     <header class="topbar">
       <h1 class="title">New Political Compass</h1>
+      <div id="dataset-tabs" class="tabs" role="tablist" aria-label="Dataset"></div>
       <label class="search-label" for="search">Search point:</label>
       <input id="search" class="search-input" type="search" autocomplete="off" placeholder="Search point">
       <div class="button-row">
@@ -478,8 +516,18 @@
 
   <script>
     const APP_TITLE = "New Political Compass";
-    const CSV_PATH = "ideology_coordinates.csv";
-    const CSV_CATS = "ideology_categories.csv";
+    const DATASETS = [
+      {
+        label: "Original",
+        pointPath: "ideology_coordinates.csv",
+        categoryPath: "ideology_categories.csv"
+      },
+      {
+        label: "New",
+        pointPath: "ideology_coordinates2.csv",
+        categoryPath: "ideology_categories2.csv"
+      }
+    ];
     const WORLD_MIN = -10;
     const WORLD_MAX = 10;
     const WORLD_SPAN = WORLD_MAX - WORLD_MIN;
@@ -494,6 +542,8 @@
     const MOBILE_LABEL_BOOST = 1.3;
 
     const state = {
+      datasets: [],
+      activeDatasetIndex: 0,
       points: [],
       categoryPoints: [],
       warnings: [],
@@ -505,6 +555,7 @@
     };
 
     const elements = {
+      tabs: document.getElementById("dataset-tabs"),
       search: document.getElementById("search"),
       clear: document.getElementById("clear"),
       reset: document.getElementById("reset"),
@@ -692,10 +743,12 @@
     }
 
     function updateStatus() {
+      const dataset = state.datasets[state.activeDatasetIndex];
+      const datasetLabel = dataset ? dataset.label : "Dataset";
       const groupCount = state.points.filter((point) => point.group).length;
       const skippedCount = state.warnings.length + state.categoryWarnings.length;
       const warningText = skippedCount ? ` | ${skippedCount} skipped row(s)` : "";
-      elements.status.textContent = `${state.points.length} ideology point(s) | ${state.categoryPoints.length} category point(s) | ${groupCount} with group values${warningText}`;
+      elements.status.textContent = `${datasetLabel} | ${state.points.length} ideology point(s) | ${state.categoryPoints.length} category point(s) | ${groupCount} with group values${warningText}`;
     }
 
     function drawGrid() {
@@ -1016,6 +1069,46 @@
       });
     }
 
+    function renderDatasetTabs() {
+      elements.tabs.innerHTML = "";
+
+      state.datasets.forEach((dataset, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `tab${index === state.activeDatasetIndex ? " active" : ""}`;
+        button.setAttribute("role", "tab");
+        button.setAttribute("aria-selected", index === state.activeDatasetIndex ? "true" : "false");
+        button.textContent = dataset.label;
+        button.addEventListener("click", () => switchDataset(index));
+        elements.tabs.append(button);
+      });
+    }
+
+    function applyDataset(index) {
+      const dataset = state.datasets[index];
+      state.activeDatasetIndex = index;
+      state.points = dataset.points;
+      state.categoryPoints = dataset.categoryPoints;
+      state.warnings = dataset.warnings;
+      state.categoryWarnings = dataset.categoryWarnings;
+      state.selectedIndex = null;
+      state.matches = [];
+      buildCoordIndex();
+    }
+
+    function switchDataset(index) {
+      if (index === state.activeDatasetIndex) {
+        return;
+      }
+
+      applyDataset(index);
+      elements.search.value = "";
+      renderDatasetTabs();
+      updateStatus();
+      renderMatches();
+      drawAll();
+    }
+
     function updateSearch() {
       const query = elements.search.value.trim().toLowerCase();
       if (!query) {
@@ -1131,16 +1224,26 @@
         });
     }
 
-    Promise.all([fetchText(CSV_PATH), fetchText(CSV_CATS)])
-      .then(([pointText, categoryText]) => {
-        const parsedPoints = parsePoints(pointText);
-        const parsedCategories = parsePoints(categoryText);
-        state.points = parsedPoints.points;
-        state.categoryPoints = parsedCategories.points;
-        state.warnings = parsedPoints.warnings;
-        state.categoryWarnings = parsedCategories.warnings;
-        buildCoordIndex();
+    Promise.all(DATASETS.map((dataset) => Promise.all([
+      fetchText(dataset.pointPath),
+      fetchText(dataset.categoryPath)
+    ]).then(([pointText, categoryText]) => {
+      const parsedPoints = parsePoints(pointText);
+      const parsedCategories = parsePoints(categoryText);
+      return {
+        label: dataset.label,
+        points: parsedPoints.points,
+        categoryPoints: parsedCategories.points,
+        warnings: parsedPoints.warnings,
+        categoryWarnings: parsedCategories.warnings
+      };
+    })))
+      .then((datasets) => {
+        state.datasets = datasets;
+        applyDataset(0);
+        renderDatasetTabs();
         updateStatus();
+        renderMatches();
         drawAll();
       })
       .catch((error) => {
