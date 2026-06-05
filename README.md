@@ -2,7 +2,7 @@
 
 [Open the live compass](https://akapppy.github.io/New-Political-Compass/)
 
-Interactive political compass visualization for the ideology coordinate dataset in `ideology_coordinates.csv`, with a green top-level category Voronoi overlay from `ideology_categories.csv`.
+Interactive political compass visualization for three ideology-coordinate detail levels, with a green top-level category Voronoi overlay.
 
 The project includes two versions:
 
@@ -11,7 +11,7 @@ The project includes two versions:
 
 ## Browser Version
 
-Open `index.html` through a web server so the page can load both CSV files.
+Open `index.html` through a web server so the page can load the CSV files.
 
 ```bash
 python3 -m http.server 8000
@@ -55,4 +55,4 @@ Optional column:
 group
 ```
 
-Coordinates must be finite numbers between `-10` and `10`. Rows outside those bounds are skipped by both versions. The `ideology_categories.csv` overlay uses the same `name,x,y` format.
+Coordinates must be finite numbers between `-10` and `10`. Rows outside those bounds are skipped by both versions. The category overlays use the same `name,x,y` format.

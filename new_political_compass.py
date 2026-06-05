@@ -8,8 +8,8 @@ Required install:
 Run:
     python3 new_political_compass.py
 
-Edit CSV_PATH or CSV_CATS below if either CSV moves.
-Expected CSV columns for both files:
+Edit the CSV_PATH or CSV_CATS values below if a CSV moves.
+Expected CSV columns for all point/category files:
     name,x,y,group
 
 Required: name, x, y
@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, TypedDict
 import math
 import sys
 import tkinter as tk
@@ -30,6 +30,7 @@ import numpy as np
 import pandas as pd
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backend_bases import MouseEvent
 from matplotlib.figure import Figure
 from matplotlib.patches import Polygon as MplPolygon
 
@@ -54,6 +55,7 @@ except ImportError as exc:  # pragma: no cover - user environment check
 
 CSV_PATH = str(Path(__file__).with_name("ideology_coordinates.csv"))
 CSV_PATH2 = str(Path(__file__).with_name("ideology_coordinates2.csv"))
+CSV_PATH3 = str(Path(__file__).with_name("ideology_coordinates3.csv"))
 CSV_CATS = str(Path(__file__).with_name("ideology_categories.csv"))
 CSV_CATS2 = str(Path(__file__).with_name("ideology_categories2.csv"))
 
@@ -83,7 +85,7 @@ POINT_COLOR = "#f4f4f4"
 POINT_EDGE = "#111111"
 SELECTED_COLOR = "#fff176"
 SELECTED_RING = "#ff4081"
-VORONOI_EDGE = "#6d6d6d"
+VORONOI_EDGE = "#9be7ff"
 VORONOI_FILL = "#4fc3f7"
 CATEGORY_EDGE = "#45e56f"
 CATEGORY_FILL = "#27c35a"
@@ -119,6 +121,17 @@ class DataLoadError(Exception):
     """Raised when the CSV cannot be loaded into valid graph data."""
 
 
+class DragStart(TypedDict):
+    """Mouse-drag state captured when pan begins."""
+
+    x_pixel: float
+    y_pixel: float
+    xlim: Tuple[float, float]
+    ylim: Tuple[float, float]
+    bbox_width: float
+    bbox_height: float
+
+
 # -----------------------------------------------------------------------------
 # CSV loading
 # -----------------------------------------------------------------------------
@@ -138,6 +151,11 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     for col in df.columns:
         renamed[col] = str(col).strip().lower()
     return df.rename(columns=renamed)
+
+
+def _parse_csv_float(value: object) -> float:
+    """Parse a CSV scalar into a float while keeping type checkers honest."""
+    return float(str(value).strip())
 
 
 def load_points(csv_path: str) -> Tuple[List[CompassPoint], List[str]]:
@@ -171,18 +189,17 @@ def load_points(csv_path: str) -> Tuple[List[CompassPoint], List[str]]:
     warnings: List[str] = []
     fallback_counter = 1
 
-    for row_index, row in df.iterrows():
-        row_number = int(row_index) + 2  # +2 because CSV header is row 1
+    for row_number, (_, row) in enumerate(df.iterrows(), start=2):
 
         if all(_is_blank(row.get(col)) for col in df.columns):
             continue
 
-        raw_x = row.get("x")
-        raw_y = row.get("y")
+        raw_x: object = row["x"]
+        raw_y: object = row["y"]
 
         try:
-            x = float(raw_x)
-            y = float(raw_y)
+            x = _parse_csv_float(raw_x)
+            y = _parse_csv_float(raw_y)
         except (TypeError, ValueError):
             warnings.append(
                 f"Skipped row {row_number}: x/y values must be numeric "
@@ -401,7 +418,6 @@ class NewPoliticalCompassApp:
         self.root = root
         self.datasets = list(datasets)
         self.active_dataset_index = 0
-        self.dataset_buttons: List[tk.Button] = []
         self.warning_notified_dataset_indices: set[int] = set()
 
         self.points: List[CompassPoint] = []
@@ -420,7 +436,7 @@ class NewPoliticalCompassApp:
 
         self.selected_index: Optional[int] = None
         self.listbox_indices: List[int] = []
-        self.drag_start: Optional[Dict[str, object]] = None
+        self.drag_start: Optional[DragStart] = None
         self.is_dragging = False
 
         self.root.title(APP_TITLE)
@@ -430,12 +446,13 @@ class NewPoliticalCompassApp:
 
         self.search_var = tk.StringVar()
         self.status_var = tk.StringVar()
+        self.detail_var = tk.IntVar(value=1)
 
         self._apply_dataset(0)
         self._build_ui()
         self._connect_events()
         self._update_status()
-        self._update_dataset_buttons()
+        self._update_detail_slider()
         self.draw_plot()
         self._notify_active_dataset_warnings()
 
@@ -539,25 +556,46 @@ class NewPoliticalCompassApp:
         )
         title_label.pack(side=tk.LEFT, padx=(0, 12))
 
-        tab_frame = tk.Frame(top_frame, bg=PANEL_BACKGROUND)
-        tab_frame.pack(side=tk.LEFT, padx=(0, 18))
+        detail_frame = tk.Frame(top_frame, bg=PANEL_BACKGROUND)
+        detail_frame.pack(side=tk.LEFT, padx=(0, 18))
 
-        for index, dataset in enumerate(self.datasets):
-            button = tk.Button(
-                tab_frame,
-                text=dataset.label,
-                command=lambda dataset_index=index: self.switch_dataset(dataset_index),
-                bg="#d8d8d8",
-                fg="#111111",
-                activebackground="#eeeeee",
-                activeforeground="#111111",
-                relief=tk.FLAT,
-                font=("Helvetica Neue", 11),
-                padx=10,
-                pady=2,
-            )
-            button.pack(side=tk.LEFT, padx=(0 if index == 0 else 2, 0))
-            self.dataset_buttons.append(button)
+        detail_left_label = tk.Label(
+            detail_frame,
+            text="Most detailed",
+            bg=PANEL_BACKGROUND,
+            fg=MUTED_TEXT,
+            font=("Helvetica Neue", 10),
+        )
+        detail_left_label.pack(side=tk.LEFT, padx=(0, 6))
+
+        self.detail_scale = tk.Scale(
+            detail_frame,
+            from_=1,
+            to=len(self.datasets),
+            orient=tk.HORIZONTAL,
+            variable=self.detail_var,
+            command=self._on_detail_slider_changed,
+            bg=PANEL_BACKGROUND,
+            fg=TEXT_COLOR,
+            activebackground=SELECTED_RING,
+            troughcolor="#303030",
+            highlightthickness=0,
+            relief=tk.FLAT,
+            showvalue=True,
+            resolution=1,
+            length=130,
+            font=("Helvetica Neue", 10),
+        )
+        self.detail_scale.pack(side=tk.LEFT)
+
+        detail_right_label = tk.Label(
+            detail_frame,
+            text="Least detailed",
+            bg=PANEL_BACKGROUND,
+            fg=MUTED_TEXT,
+            font=("Helvetica Neue", 10),
+        )
+        detail_right_label.pack(side=tk.LEFT, padx=(6, 0))
 
         search_label = tk.Label(
             top_frame,
@@ -665,6 +703,10 @@ class NewPoliticalCompassApp:
         self.search_entry.bind("<Escape>", self._on_escape)
         self.root.bind("<Escape>", self._on_escape)
 
+    def _on_detail_slider_changed(self, value: str) -> None:
+        dataset_index = int(round(float(value))) - 1
+        self.switch_dataset(dataset_index)
+
     def switch_dataset(self, dataset_index: int) -> None:
         if dataset_index == self.active_dataset_index:
             return
@@ -673,26 +715,12 @@ class NewPoliticalCompassApp:
         self.search_var.set("")
         self.results_listbox.delete(0, tk.END)
         self._update_status()
-        self._update_dataset_buttons()
+        self._update_detail_slider()
         self.draw_plot(keep_view=True)
         self._notify_active_dataset_warnings()
 
-    def _update_dataset_buttons(self) -> None:
-        for index, button in enumerate(self.dataset_buttons):
-            if index == self.active_dataset_index:
-                button.configure(
-                    bg=SELECTED_RING,
-                    fg="#111111",
-                    activebackground=SELECTED_RING,
-                    activeforeground="#111111",
-                )
-            else:
-                button.configure(
-                    bg="#d8d8d8",
-                    fg="#111111",
-                    activebackground="#eeeeee",
-                    activeforeground="#111111",
-                )
+    def _update_detail_slider(self) -> None:
+        self.detail_var.set(self.active_dataset_index + 1)
 
     def _connect_events(self) -> None:
         self.canvas.mpl_connect("scroll_event", self._on_scroll)
@@ -754,11 +782,11 @@ class NewPoliticalCompassApp:
             self.category_voronoi_cells,
             CATEGORY_FILL,
             CATEGORY_EDGE,
-            1.4,
-            0.20,
-            0.8,
+            1.0,
+            0.10,
+            0.6,
         )
-        self._draw_cell_patches(self.voronoi_cells, VORONOI_FILL, VORONOI_EDGE, 0.9, 0.12, 1)
+        self._draw_cell_patches(self.voronoi_cells, VORONOI_FILL, VORONOI_EDGE, 1.25, 0.18, 1.8)
 
         boundary = MplPolygon(
             [
@@ -995,14 +1023,16 @@ class NewPoliticalCompassApp:
 
         return "\n".join(lines)
 
-    def _nearest_point_index(self, event: object) -> Optional[int]:
+    def _nearest_point_index(self, event: MouseEvent) -> Optional[int]:
         if event.x is None or event.y is None:
             return None
 
+        x_pixel = float(event.x)
+        y_pixel = float(event.y)
         display_coords = self.ax.transData.transform(
             np.asarray([(point.x, point.y) for point in self.points], dtype=float)
         )
-        pointer = np.asarray([event.x, event.y], dtype=float)
+        pointer = np.asarray([x_pixel, y_pixel], dtype=float)
         distances = np.linalg.norm(display_coords - pointer, axis=1)
 
         nearest_index = int(np.argmin(distances))
@@ -1014,10 +1044,12 @@ class NewPoliticalCompassApp:
     # Zoom / pan
     # ------------------------------------------------------------------
 
-    def _on_scroll(self, event: object) -> None:
+    def _on_scroll(self, event: MouseEvent) -> None:
         if event.inaxes != self.ax or event.xdata is None or event.ydata is None:
             return
 
+        xdata = float(event.xdata)
+        ydata = float(event.ydata)
         current_xlim = self.ax.get_xlim()
         current_ylim = self.ax.get_ylim()
         current_width = current_xlim[1] - current_xlim[0]
@@ -1032,11 +1064,11 @@ class NewPoliticalCompassApp:
         new_width = float(np.clip(current_width * scale, MIN_VIEW_SPAN, WORLD_SPAN))
         new_height = float(np.clip(current_height * scale, MIN_VIEW_SPAN, WORLD_SPAN))
 
-        rel_x = (event.xdata - current_xlim[0]) / current_width if current_width else 0.5
-        rel_y = (event.ydata - current_ylim[0]) / current_height if current_height else 0.5
+        rel_x = (xdata - current_xlim[0]) / current_width if current_width else 0.5
+        rel_y = (ydata - current_ylim[0]) / current_height if current_height else 0.5
 
-        new_xmin = event.xdata - rel_x * new_width
-        new_ymin = event.ydata - rel_y * new_height
+        new_xmin = xdata - rel_x * new_width
+        new_ymin = ydata - rel_y * new_height
         new_xlim = self._clamp_limits(new_xmin, new_xmin + new_width)
         new_ylim = self._clamp_limits(new_ymin, new_ymin + new_height)
 
@@ -1044,28 +1076,37 @@ class NewPoliticalCompassApp:
         self.ax.set_ylim(*new_ylim)
         self.canvas.draw_idle()
 
-    def _on_mouse_press(self, event: object) -> None:
-        if event.inaxes != self.ax or getattr(event, "button", None) != 1:
+    def _on_mouse_press(self, event: MouseEvent) -> None:
+        if (
+            event.inaxes != self.ax
+            or getattr(event, "button", None) != 1
+            or event.x is None
+            or event.y is None
+        ):
             return
 
+        xlim = self.ax.get_xlim()
+        ylim = self.ax.get_ylim()
         self.drag_start = {
-            "x_pixel": event.x,
-            "y_pixel": event.y,
-            "xlim": self.ax.get_xlim(),
-            "ylim": self.ax.get_ylim(),
-            "bbox_width": self.ax.bbox.width,
-            "bbox_height": self.ax.bbox.height,
+            "x_pixel": float(event.x),
+            "y_pixel": float(event.y),
+            "xlim": (float(xlim[0]), float(xlim[1])),
+            "ylim": (float(ylim[0]), float(ylim[1])),
+            "bbox_width": float(self.ax.bbox.width),
+            "bbox_height": float(self.ax.bbox.height),
         }
         self.is_dragging = False
 
-    def _on_mouse_move(self, event: object) -> None:
+    def _on_mouse_move(self, event: MouseEvent) -> None:
         if self.drag_start is None or event.x is None or event.y is None:
             return
 
-        start_x = float(self.drag_start["x_pixel"])
-        start_y = float(self.drag_start["y_pixel"])
-        dx_pixels = event.x - start_x
-        dy_pixels = event.y - start_y
+        x_pixel = float(event.x)
+        y_pixel = float(event.y)
+        start_x = self.drag_start["x_pixel"]
+        start_y = self.drag_start["y_pixel"]
+        dx_pixels = x_pixel - start_x
+        dy_pixels = y_pixel - start_y
 
         if abs(dx_pixels) > PAN_CLICK_TOLERANCE_PIXELS or abs(dy_pixels) > PAN_CLICK_TOLERANCE_PIXELS:
             self.is_dragging = True
@@ -1075,8 +1116,8 @@ class NewPoliticalCompassApp:
 
         xlim = self.drag_start["xlim"]
         ylim = self.drag_start["ylim"]
-        bbox_width = max(float(self.drag_start["bbox_width"]), 1.0)
-        bbox_height = max(float(self.drag_start["bbox_height"]), 1.0)
+        bbox_width = max(self.drag_start["bbox_width"], 1.0)
+        bbox_height = max(self.drag_start["bbox_height"], 1.0)
 
         width = xlim[1] - xlim[0]
         height = ylim[1] - ylim[0]
@@ -1091,7 +1132,7 @@ class NewPoliticalCompassApp:
         self.ax.set_ylim(*new_ylim)
         self.canvas.draw_idle()
 
-    def _on_mouse_release(self, event: object) -> None:
+    def _on_mouse_release(self, event: MouseEvent) -> None:
         if self.drag_start is None:
             return
 
@@ -1163,6 +1204,7 @@ def main() -> None:
         original_category_points, original_category_warnings = load_points(CSV_CATS)
         new_points, new_warnings = load_points(CSV_PATH2)
         new_category_points, new_category_warnings = load_points(CSV_CATS2)
+        pared_points, pared_warnings = load_points(CSV_PATH3)
     except DataLoadError as exc:
         print(exc, file=sys.stderr)
         messagebox.showerror(APP_TITLE, str(exc))
@@ -1171,16 +1213,23 @@ def main() -> None:
 
     datasets = [
         CompassDataset(
-            label="Original",
+            label="Level 1",
             points=original_points,
             warnings=original_warnings,
             category_points=original_category_points,
             category_warnings=original_category_warnings,
         ),
         CompassDataset(
-            label="New",
+            label="Level 2",
             points=new_points,
             warnings=new_warnings,
+            category_points=new_category_points,
+            category_warnings=new_category_warnings,
+        ),
+        CompassDataset(
+            label="Level 3",
+            points=pared_points,
+            warnings=pared_warnings,
             category_points=new_category_points,
             category_warnings=new_category_warnings,
         ),

@@ -21,7 +21,7 @@
       --point-edge: #111111;
       --selected: #fff176;
       --selected-ring: #ff4081;
-      --voronoi-edge: #6d6d6d;
+      --voronoi-edge: #9be7ff;
       --voronoi-fill: #4fc3f7;
       --category-edge: #45e56f;
       --category-fill: #27c35a;
@@ -78,37 +78,40 @@
       white-space: nowrap;
     }
 
-    .tabs {
+    .detail-control {
       display: flex;
       align-items: center;
-      gap: 2px;
+      gap: 8px;
       min-width: 0;
-    }
-
-    .tab {
-      min-height: 30px;
-      padding: 5px 10px;
-      border: 1px solid #333333;
-      border-radius: 4px;
-      background: #d8d8d8;
-      color: #111111;
-      cursor: pointer;
+      color: var(--muted);
+      font-size: 10px;
       white-space: nowrap;
     }
 
-    .tab:hover {
-      background: #eeeeee;
+    .detail-slider-wrap {
+      width: 132px;
+      min-width: 112px;
     }
 
-    .tab.active {
-      border-color: var(--selected-ring);
-      background: var(--selected-ring);
-      color: #111111;
+    .detail-slider {
+      width: 100%;
+      margin: 0;
+      accent-color: var(--selected-ring);
+      cursor: pointer;
     }
 
-    .tab:focus-visible {
+    .detail-slider:focus-visible {
       outline: 2px solid var(--focus);
-      outline-offset: 2px;
+      outline-offset: 3px;
+    }
+
+    .detail-ticks {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 1px;
+      color: var(--text);
+      font-size: 10px;
+      line-height: 1;
     }
 
     .search-label {
@@ -310,17 +313,18 @@
 
     .cell {
       fill: var(--voronoi-fill);
-      fill-opacity: 0.12;
+      fill-opacity: 0.18;
       stroke: var(--voronoi-edge);
-      stroke-width: 0.9;
+      stroke-width: 1.25;
       vector-effect: non-scaling-stroke;
     }
 
     .category-cell {
       fill: var(--category-fill);
-      fill-opacity: 0.2;
+      fill-opacity: 0.1;
       stroke: var(--category-edge);
-      stroke-width: 1.4;
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
     }
 
     .point {
@@ -425,7 +429,7 @@
         font-size: 16px;
       }
 
-      .tabs {
+      .detail-control {
         grid-column: 1 / -1;
       }
 
@@ -477,6 +481,15 @@
         flex: 1;
       }
 
+      .detail-control {
+        justify-content: space-between;
+      }
+
+      .detail-slider-wrap {
+        flex: 1;
+        max-width: 160px;
+      }
+
       .plot-shell {
         min-height: 250px;
       }
@@ -487,7 +500,14 @@
   <main class="app">
     <header class="topbar">
       <h1 class="title">New Political Compass</h1>
-      <div id="dataset-tabs" class="tabs" role="tablist" aria-label="Dataset"></div>
+      <div class="detail-control" aria-label="Detail level">
+        <span>Most detailed</span>
+        <div class="detail-slider-wrap">
+          <input id="detail-slider" class="detail-slider" type="range" min="1" max="3" step="1" value="1" aria-label="Detail level">
+          <div class="detail-ticks" aria-hidden="true"><span>1</span><span>2</span><span>3</span></div>
+        </div>
+        <span>Least detailed</span>
+      </div>
       <label class="search-label" for="search">Search point:</label>
       <input id="search" class="search-input" type="search" autocomplete="off" placeholder="Search point">
       <div class="button-row">
@@ -518,13 +538,18 @@
     const APP_TITLE = "New Political Compass";
     const DATASETS = [
       {
-        label: "Original",
+        label: "Level 1",
         pointPath: "ideology_coordinates.csv",
         categoryPath: "ideology_categories.csv"
       },
       {
-        label: "New",
+        label: "Level 2",
         pointPath: "ideology_coordinates2.csv",
+        categoryPath: "ideology_categories2.csv"
+      },
+      {
+        label: "Level 3",
+        pointPath: "ideology_coordinates3.csv",
         categoryPath: "ideology_categories2.csv"
       }
     ];
@@ -555,7 +580,7 @@
     };
 
     const elements = {
-      tabs: document.getElementById("dataset-tabs"),
+      detailSlider: document.getElementById("detail-slider"),
       search: document.getElementById("search"),
       clear: document.getElementById("clear"),
       reset: document.getElementById("reset"),
@@ -1069,19 +1094,9 @@
       });
     }
 
-    function renderDatasetTabs() {
-      elements.tabs.innerHTML = "";
-
-      state.datasets.forEach((dataset, index) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = `tab${index === state.activeDatasetIndex ? " active" : ""}`;
-        button.setAttribute("role", "tab");
-        button.setAttribute("aria-selected", index === state.activeDatasetIndex ? "true" : "false");
-        button.textContent = dataset.label;
-        button.addEventListener("click", () => switchDataset(index));
-        elements.tabs.append(button);
-      });
+    function renderDetailSlider() {
+      elements.detailSlider.value = String(state.activeDatasetIndex + 1);
+      elements.detailSlider.setAttribute("aria-valuetext", state.datasets[state.activeDatasetIndex].label);
     }
 
     function applyDataset(index) {
@@ -1103,7 +1118,7 @@
 
       applyDataset(index);
       elements.search.value = "";
-      renderDatasetTabs();
+      renderDetailSlider();
       updateStatus();
       renderMatches();
       drawAll();
@@ -1179,6 +1194,10 @@
     }
 
     elements.search.addEventListener("input", updateSearch);
+    elements.detailSlider.addEventListener("input", (event) => {
+      switchDataset(Number(event.target.value) - 1);
+    });
+
     elements.search.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
@@ -1241,7 +1260,7 @@
       .then((datasets) => {
         state.datasets = datasets;
         applyDataset(0);
-        renderDatasetTabs();
+        renderDetailSlider();
         updateStatus();
         renderMatches();
         drawAll();
