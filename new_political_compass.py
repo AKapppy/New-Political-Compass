@@ -58,6 +58,7 @@ CSV_PATH2 = str(Path(__file__).with_name("ideology_coordinates2.csv"))
 CSV_PATH3 = str(Path(__file__).with_name("ideology_coordinates3.csv"))
 CSV_CATS = str(Path(__file__).with_name("ideology_categories.csv"))
 CSV_CATS2 = str(Path(__file__).with_name("ideology_categories2.csv"))
+CSV_CATS3 = str(Path(__file__).with_name("ideology_categories3.csv"))
 
 APP_TITLE = "New Political Compass"
 WORLD_MIN = -10.0
@@ -1205,6 +1206,7 @@ def main() -> None:
         new_points, new_warnings = load_points(CSV_PATH2)
         new_category_points, new_category_warnings = load_points(CSV_CATS2)
         pared_points, pared_warnings = load_points(CSV_PATH3)
+        pared_category_points, pared_category_warnings = load_points(CSV_CATS3)
     except DataLoadError as exc:
         print(exc, file=sys.stderr)
         messagebox.showerror(APP_TITLE, str(exc))
@@ -1230,8 +1232,8 @@ def main() -> None:
             label="Level 3",
             points=pared_points,
             warnings=pared_warnings,
-            category_points=new_category_points,
-            category_warnings=new_category_warnings,
+            category_points=pared_category_points,
+            category_warnings=pared_category_warnings,
         ),
     ]
 
