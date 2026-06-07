@@ -2,7 +2,7 @@
 
 [Open the live compass](https://akapppy.github.io/New-Political-Compass/)
 
-Interactive political compass visualization for three ideology-coordinate detail levels, with a green top-level category Voronoi overlay.
+Interactive political compass visualization for four ideology-coordinate detail levels, with a green top-level category Voronoi overlay.
 
 The project includes two versions:
 

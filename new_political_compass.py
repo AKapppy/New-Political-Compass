@@ -56,9 +56,11 @@ except ImportError as exc:  # pragma: no cover - user environment check
 CSV_PATH = str(Path(__file__).with_name("ideology_coordinates.csv"))
 CSV_PATH2 = str(Path(__file__).with_name("ideology_coordinates2.csv"))
 CSV_PATH3 = str(Path(__file__).with_name("ideology_coordinates3.csv"))
+CSV_PATH4 = str(Path(__file__).with_name("ideology_coordinates4.csv"))
 CSV_CATS = str(Path(__file__).with_name("ideology_categories.csv"))
 CSV_CATS2 = str(Path(__file__).with_name("ideology_categories2.csv"))
 CSV_CATS3 = str(Path(__file__).with_name("ideology_categories3.csv"))
+CSV_CATS4 = str(Path(__file__).with_name("ideology_categories4.csv"))
 
 APP_TITLE = "New Political Compass"
 WORLD_MIN = -10.0
@@ -1207,6 +1209,8 @@ def main() -> None:
         new_category_points, new_category_warnings = load_points(CSV_CATS2)
         pared_points, pared_warnings = load_points(CSV_PATH3)
         pared_category_points, pared_category_warnings = load_points(CSV_CATS3)
+        compact_points, compact_warnings = load_points(CSV_PATH4)
+        compact_category_points, compact_category_warnings = load_points(CSV_CATS4)
     except DataLoadError as exc:
         print(exc, file=sys.stderr)
         messagebox.showerror(APP_TITLE, str(exc))
@@ -1234,6 +1238,13 @@ def main() -> None:
             warnings=pared_warnings,
             category_points=pared_category_points,
             category_warnings=pared_category_warnings,
+        ),
+        CompassDataset(
+            label="Level 4",
+            points=compact_points,
+            warnings=compact_warnings,
+            category_points=compact_category_points,
+            category_warnings=compact_category_warnings,
         ),
     ]
 
