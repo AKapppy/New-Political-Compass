@@ -2,7 +2,7 @@
 
 [Open the live compass](https://akapppy.github.io/New-Political-Compass/)
 
-Interactive political compass visualization for four ideology-coordinate detail levels, with a green top-level category Voronoi overlay.
+Interactive political compass visualization for five ideology-coordinate detail levels, with a green top-level category Voronoi overlay.
 
 The project includes two versions:
 
@@ -55,4 +55,4 @@ Optional column:
 group
 ```
 
-Coordinates must be finite numbers between `-10` and `10`. Rows outside those bounds are skipped by both versions. The category overlays use the same `name,x,y` format.
+Coordinates must be finite numbers. The graph spans `-11` to `11`, with the primary compass square emphasized from `-10` to `10`. Points inside the graph bounds are included in the Voronoi diagrams. The category overlays use the same `name,x,y` format.

@@ -303,11 +303,16 @@
       vector-effect: non-scaling-stroke;
     }
 
+    .outer-band {
+      fill: #050505;
+      opacity: 0.28;
+    }
+
     .boundary {
       fill: none;
-      stroke: #888888;
-      stroke-width: 1.2;
-      opacity: 0.8;
+      stroke: #d0d0d0;
+      stroke-width: 2.3;
+      opacity: 0.9;
       vector-effect: non-scaling-stroke;
     }
 
@@ -502,9 +507,9 @@
       <h1 class="title">New Political Compass</h1>
       <div class="detail-control" aria-label="Detail level">
         <span>Most detailed</span>
-        <div class="detail-slider-wrap">
-          <input id="detail-slider" class="detail-slider" type="range" min="1" max="4" step="1" value="1" aria-label="Detail level">
-          <div class="detail-ticks" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span></div>
+        <div class="detail-slider-wrap"> 
+          <input id="detail-slider" class="detail-slider" type="range" min="1" max="5" step="1" value="1" aria-label="Detail level">
+          <div class="detail-ticks" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
         </div>
         <span>Least detailed</span>
       </div>
@@ -556,11 +561,19 @@
         label: "Level 4",
         pointPath: "ideology_coordinates4.csv",
         categoryPath: "ideology_categories4.csv"
+      },
+      {
+        label: "Level 5",
+        pointPath: "ideology_coordinates5.csv",
+        categoryPath: "ideology_categories5.csv"
       }
     ];
-    const WORLD_MIN = -10;
-    const WORLD_MAX = 10;
-    const WORLD_SPAN = WORLD_MAX - WORLD_MIN;
+    const GRAPH_MIN = -11;
+    const GRAPH_MAX = 11;
+    const COMPASS_MIN = -10;
+    const COMPASS_MAX = 10;
+    const WORLD_MIN = GRAPH_MIN;
+    const WORLD_MAX = GRAPH_MAX;
     const MIN_VIEW_SPAN = 0.75;
     const SEARCH_FOCUS_SPAN = 6;
     const MAX_SEARCH_RESULTS = 15;
@@ -581,7 +594,13 @@
       selectedIndex: null,
       matches: [],
       transform: d3.zoomIdentity,
-      coordIndex: new Map()
+      coordIndex: new Map(),
+      viewBounds: {
+        minX: WORLD_MIN,
+        maxX: WORLD_MAX,
+        minY: WORLD_MIN,
+        maxY: WORLD_MAX
+      }
     };
 
     const elements = {
@@ -615,7 +634,7 @@
       .attr("pointer-events", "all");
 
     const zoom = d3.zoom()
-      .scaleExtent([1, WORLD_SPAN / MIN_VIEW_SPAN])
+      .scaleExtent([1, 100])
       .translateExtent([[0, 0], [PLOT_SIZE, PLOT_SIZE]])
       .extent([[0, 0], [PLOT_SIZE, PLOT_SIZE]])
       .filter((event) => !event.ctrlKey || event.type === "wheel")
@@ -704,11 +723,6 @@
           return;
         }
 
-        if (x < WORLD_MIN || x > WORLD_MAX || y < WORLD_MIN || y > WORLD_MAX) {
-          warnings.push(`Skipped row ${rowNumber}: point (${x}, ${y}) is outside the ${WORLD_MIN} to ${WORLD_MAX} bounds.`);
-          return;
-        }
-
         const rawName = (row[nameColumn] || "").trim();
         const rawGroup = groupColumn >= 0 ? (row[groupColumn] || "").trim() : "";
         points.push({
@@ -720,8 +734,8 @@
         });
       });
 
-      if (points.length < 3) {
-        throw new Error("At least 3 valid in-bounds points are required to build a Voronoi diagram.");
+      if (!points.length) {
+        throw new Error("No valid finite points were found in the CSV.");
       }
 
       return { points, warnings };
@@ -733,6 +747,55 @@
 
     function clamp(value, min, max) {
       return Math.min(max, Math.max(min, value));
+    }
+
+    function isInGraphBounds(point) {
+      return point.x >= WORLD_MIN && point.x <= WORLD_MAX && point.y >= WORLD_MIN && point.y <= WORLD_MAX;
+    }
+
+    function updateViewBounds() {
+      const allPoints = [...state.points, ...state.categoryPoints].filter(isInGraphBounds);
+      const xValues = [WORLD_MIN, WORLD_MAX, ...allPoints.map((point) => point.x)];
+      const yValues = [WORLD_MIN, WORLD_MAX, ...allPoints.map((point) => point.y)];
+      let minX = Math.min(...xValues);
+      let maxX = Math.max(...xValues);
+      let minY = Math.min(...yValues);
+      let maxY = Math.max(...yValues);
+      const xPadding = minX === WORLD_MIN && maxX === WORLD_MAX ? 0 : 0.4;
+      const yPadding = minY === WORLD_MIN && maxY === WORLD_MAX ? 0 : 0.4;
+      minX -= xPadding;
+      maxX += xPadding;
+      minY -= yPadding;
+      maxY += yPadding;
+
+      const span = Math.max(maxX - minX, maxY - minY);
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+
+      state.viewBounds = {
+        minX: centerX - span / 2,
+        maxX: centerX + span / 2,
+        minY: centerY - span / 2,
+        maxY: centerY + span / 2
+      };
+      xScale.domain([state.viewBounds.minX, state.viewBounds.maxX]);
+      yScale.domain([state.viewBounds.minY, state.viewBounds.maxY]);
+    }
+
+    function compassRect() {
+      const left = xScale(COMPASS_MIN);
+      const right = xScale(COMPASS_MAX);
+      const top = yScale(COMPASS_MAX);
+      const bottom = yScale(COMPASS_MIN);
+      return { left, right, top, bottom };
+    }
+
+    function graphRect() {
+      const left = xScale(WORLD_MIN);
+      const right = xScale(WORLD_MAX);
+      const top = yScale(WORLD_MAX);
+      const bottom = yScale(WORLD_MIN);
+      return { left, right, top, bottom };
     }
 
     function compactViewportBoost() {
@@ -749,12 +812,37 @@
       return baseSize * compactViewportBoost() * labelZoomScale();
     }
 
-    function labelOffset(baseSize) {
-      return Math.max(4, labelSize(baseSize) * 0.48);
-    }
+    function labelPlacement(point, text, baseSize) {
+      const padding = 4;
+      const naturalSize = labelSize(baseSize);
+      const maxSize = Math.max(1, (PLOT_SIZE - padding * 2) / (Math.max(text.length, 1) * 0.56));
+      const size = Math.min(naturalSize, maxSize);
+      const width = Math.max(text.length, 1) * size * 0.56;
+      const height = size * 1.25;
+      const offset = Math.max(4, size * 0.48);
+      const px = state.transform.applyX(xScale(point.x));
+      const py = state.transform.applyY(yScale(point.y));
 
-    function labelStroke(baseSize) {
-      return Math.max(2, labelSize(baseSize) * 0.22);
+      let x = px + offset;
+      let anchor = "start";
+      if (x + width > PLOT_SIZE - padding) {
+        x = px - offset;
+        anchor = "end";
+      }
+
+      if (anchor === "start") {
+        x = clamp(x, padding, PLOT_SIZE - padding - width);
+      } else {
+        x = clamp(x, padding + width, PLOT_SIZE - padding);
+      }
+
+      let y = py - offset;
+      if (y - height < padding) {
+        y = py + offset + height;
+      }
+      y = clamp(y, padding + height, PLOT_SIZE - padding);
+
+      return { x, y, anchor, size };
     }
 
     function coordKey(point) {
@@ -784,7 +872,37 @@
     function drawGrid() {
       gridLayer.selectAll("*").remove();
       const minorTicks = d3.range(WORLD_MIN, WORLD_MAX + 0.5, 1);
-      const majorTicks = d3.range(WORLD_MIN, WORLD_MAX + 1, 2);
+      const majorTicks = d3.range(COMPASS_MIN, COMPASS_MAX + 1, 2);
+      const graph = graphRect();
+      const rect = compassRect();
+
+      gridLayer.append("rect")
+        .attr("class", "outer-band")
+        .attr("x", graph.left)
+        .attr("y", graph.top)
+        .attr("width", rect.left - graph.left)
+        .attr("height", graph.bottom - graph.top);
+
+      gridLayer.append("rect")
+        .attr("class", "outer-band")
+        .attr("x", rect.right)
+        .attr("y", graph.top)
+        .attr("width", graph.right - rect.right)
+        .attr("height", graph.bottom - graph.top);
+
+      gridLayer.append("rect")
+        .attr("class", "outer-band")
+        .attr("x", graph.left)
+        .attr("y", graph.top)
+        .attr("width", graph.right - graph.left)
+        .attr("height", rect.top - graph.top);
+
+      gridLayer.append("rect")
+        .attr("class", "outer-band")
+        .attr("x", graph.left)
+        .attr("y", rect.bottom)
+        .attr("width", graph.right - graph.left)
+        .attr("height", graph.bottom - rect.bottom);
 
       gridLayer.selectAll(".minor-x")
         .data(minorTicks)
@@ -792,15 +910,15 @@
         .attr("class", "grid-line minor")
         .attr("x1", (d) => xScale(d))
         .attr("x2", (d) => xScale(d))
-        .attr("y1", 0)
-        .attr("y2", PLOT_SIZE);
+        .attr("y1", graph.top)
+        .attr("y2", graph.bottom);
 
       gridLayer.selectAll(".minor-y")
         .data(minorTicks)
         .join("line")
         .attr("class", "grid-line minor")
-        .attr("x1", 0)
-        .attr("x2", PLOT_SIZE)
+        .attr("x1", graph.left)
+        .attr("x2", graph.right)
         .attr("y1", (d) => yScale(d))
         .attr("y2", (d) => yScale(d));
 
@@ -810,22 +928,22 @@
         .attr("class", "grid-line major")
         .attr("x1", (d) => xScale(d))
         .attr("x2", (d) => xScale(d))
-        .attr("y1", 0)
-        .attr("y2", PLOT_SIZE);
+        .attr("y1", graph.top)
+        .attr("y2", graph.bottom);
 
       gridLayer.selectAll(".major-y")
         .data(majorTicks)
         .join("line")
         .attr("class", "grid-line major")
-        .attr("x1", 0)
-        .attr("x2", PLOT_SIZE)
+        .attr("x1", graph.left)
+        .attr("x2", graph.right)
         .attr("y1", (d) => yScale(d))
         .attr("y2", (d) => yScale(d));
 
       gridLayer.append("line")
         .attr("class", "axis")
-        .attr("x1", 0)
-        .attr("x2", PLOT_SIZE)
+        .attr("x1", graph.left)
+        .attr("x2", graph.right)
         .attr("y1", yScale(0))
         .attr("y2", yScale(0));
 
@@ -833,15 +951,15 @@
         .attr("class", "axis")
         .attr("x1", xScale(0))
         .attr("x2", xScale(0))
-        .attr("y1", 0)
-        .attr("y2", PLOT_SIZE);
+        .attr("y1", graph.top)
+        .attr("y2", graph.bottom);
 
       gridLayer.append("rect")
         .attr("class", "boundary")
-        .attr("x", 0)
-        .attr("y", 0)
-        .attr("width", PLOT_SIZE)
-        .attr("height", PLOT_SIZE);
+        .attr("x", rect.left)
+        .attr("y", rect.top)
+        .attr("width", rect.right - rect.left)
+        .attr("height", rect.bottom - rect.top);
 
       gridLayer.selectAll(".tick-x")
         .data(majorTicks)
@@ -861,14 +979,14 @@
 
       gridLayer.append("text")
         .attr("class", "axis-label")
-        .attr("x", PLOT_SIZE - 16)
+        .attr("x", rect.right - 16)
         .attr("y", yScale(0) - 8)
         .text("x");
 
       gridLayer.append("text")
         .attr("class", "axis-label")
         .attr("x", xScale(0) + 8)
-        .attr("y", 16)
+        .attr("y", rect.top + 16)
         .text("y");
     }
 
@@ -889,13 +1007,14 @@
 
     function drawVoronoiCells(layer, points, className) {
       layer.selectAll("*").remove();
-      const unique = uniquePoints(points);
+      const unique = uniquePoints(points.filter(isInGraphBounds));
       if (unique.length < 3) {
         return;
       }
 
       const delaunay = d3.Delaunay.from(unique, (point) => xScale(point.x), (point) => yScale(point.y));
-      const voronoi = delaunay.voronoi([0, 0, PLOT_SIZE, PLOT_SIZE]);
+      const rect = graphRect();
+      const voronoi = delaunay.voronoi([rect.left, rect.top, rect.right, rect.bottom]);
 
       layer.selectAll("path")
         .data(unique)
@@ -941,19 +1060,24 @@
         .attr("class", (_point, index) => index === state.selectedIndex ? "label selected" : "label")
         .attr("x", (point, index) => {
           const baseSize = index === state.selectedIndex ? SELECTED_LABEL_SIZE : LABEL_SIZE;
-          return state.transform.applyX(xScale(point.x)) + labelOffset(baseSize);
+          return labelPlacement(point, point.name, baseSize).x;
         })
         .attr("y", (point, index) => {
           const baseSize = index === state.selectedIndex ? SELECTED_LABEL_SIZE : LABEL_SIZE;
-          return state.transform.applyY(yScale(point.y)) - labelOffset(baseSize);
+          return labelPlacement(point, point.name, baseSize).y;
+        })
+        .attr("text-anchor", (point, index) => {
+          const baseSize = index === state.selectedIndex ? SELECTED_LABEL_SIZE : LABEL_SIZE;
+          return labelPlacement(point, point.name, baseSize).anchor;
         })
         .style("font-size", (_point, index) => {
           const baseSize = index === state.selectedIndex ? SELECTED_LABEL_SIZE : LABEL_SIZE;
-          return `${labelSize(baseSize)}px`;
+          return `${labelPlacement(_point, _point.name, baseSize).size}px`;
         })
         .style("stroke-width", (_point, index) => {
           const baseSize = index === state.selectedIndex ? SELECTED_LABEL_SIZE : LABEL_SIZE;
-          return `${labelStroke(baseSize)}px`;
+          const placed = labelPlacement(_point, _point.name, baseSize);
+          return `${Math.max(2, placed.size * 0.22)}px`;
         })
         .text((point) => point.name);
     }
@@ -963,10 +1087,14 @@
         .data(state.categoryPoints)
         .join("text")
         .attr("class", "category-label")
-        .attr("x", (point) => state.transform.applyX(xScale(point.x)) + labelOffset(CATEGORY_LABEL_SIZE))
-        .attr("y", (point) => state.transform.applyY(yScale(point.y)) - labelOffset(CATEGORY_LABEL_SIZE))
-        .style("font-size", `${labelSize(CATEGORY_LABEL_SIZE)}px`)
-        .style("stroke-width", `${labelStroke(CATEGORY_LABEL_SIZE)}px`)
+        .attr("x", (point) => labelPlacement(point, point.name, CATEGORY_LABEL_SIZE).x)
+        .attr("y", (point) => labelPlacement(point, point.name, CATEGORY_LABEL_SIZE).y)
+        .attr("text-anchor", (point) => labelPlacement(point, point.name, CATEGORY_LABEL_SIZE).anchor)
+        .style("font-size", (point) => `${labelPlacement(point, point.name, CATEGORY_LABEL_SIZE).size}px`)
+        .style("stroke-width", (point) => {
+          const placed = labelPlacement(point, point.name, CATEGORY_LABEL_SIZE);
+          return `${Math.max(2, placed.size * 0.22)}px`;
+        })
         .text((point) => point.name);
     }
 
@@ -1113,6 +1241,8 @@
       state.categoryWarnings = dataset.categoryWarnings;
       state.selectedIndex = null;
       state.matches = [];
+      state.transform = d3.zoomIdentity;
+      updateViewBounds();
       buildCoordIndex();
     }
 
@@ -1126,6 +1256,7 @@
       renderDetailSlider();
       updateStatus();
       renderMatches();
+      elements.svg.call(zoom.transform, d3.zoomIdentity);
       drawAll();
     }
 
@@ -1160,7 +1291,11 @@
     }
 
     function focusPoint(point) {
-      const targetScale = WORLD_SPAN / SEARCH_FOCUS_SPAN;
+      const viewSpan = Math.min(
+        state.viewBounds.maxX - state.viewBounds.minX,
+        state.viewBounds.maxY - state.viewBounds.minY
+      );
+      const targetScale = viewSpan / SEARCH_FOCUS_SPAN;
       const px = xScale(point.x);
       const py = yScale(point.y);
       const transform = d3.zoomIdentity

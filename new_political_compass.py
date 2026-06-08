@@ -30,7 +30,7 @@ import numpy as np
 import pandas as pd
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.backend_bases import MouseEvent
+from matplotlib.backend_bases import Event, MouseEvent
 from matplotlib.figure import Figure
 from matplotlib.patches import Polygon as MplPolygon
 
@@ -57,14 +57,20 @@ CSV_PATH = str(Path(__file__).with_name("ideology_coordinates.csv"))
 CSV_PATH2 = str(Path(__file__).with_name("ideology_coordinates2.csv"))
 CSV_PATH3 = str(Path(__file__).with_name("ideology_coordinates3.csv"))
 CSV_PATH4 = str(Path(__file__).with_name("ideology_coordinates4.csv"))
+CSV_PATH5 = str(Path(__file__).with_name("ideology_coordinates5.csv"))
 CSV_CATS = str(Path(__file__).with_name("ideology_categories.csv"))
 CSV_CATS2 = str(Path(__file__).with_name("ideology_categories2.csv"))
 CSV_CATS3 = str(Path(__file__).with_name("ideology_categories3.csv"))
 CSV_CATS4 = str(Path(__file__).with_name("ideology_categories4.csv"))
+CSV_CATS5 = str(Path(__file__).with_name("ideology_categories5.csv"))
 
 APP_TITLE = "New Political Compass"
-WORLD_MIN = -10.0
-WORLD_MAX = 10.0
+GRAPH_MIN = -11.0
+GRAPH_MAX = 11.0
+COMPASS_MIN = -10.0
+COMPASS_MAX = 10.0
+WORLD_MIN = GRAPH_MIN
+WORLD_MAX = GRAPH_MAX
 WORLD_SPAN = WORLD_MAX - WORLD_MIN
 MIN_VIEW_SPAN = 0.75
 SEARCH_FOCUS_SPAN = 6.0
@@ -82,6 +88,7 @@ PANEL_BACKGROUND = "#171717"
 GRID_MAJOR = "#3a3a3a"
 GRID_MINOR = "#242424"
 AXIS_COLOR = "#b7b7b7"
+OUTER_BAND = "#050505"
 TEXT_COLOR = "#e7e7e7"
 MUTED_TEXT = "#a8a8a8"
 POINT_COLOR = "#f4f4f4"
@@ -161,6 +168,10 @@ def _parse_csv_float(value: object) -> float:
     return float(str(value).strip())
 
 
+def is_in_graph_bounds(x: float, y: float) -> bool:
+    return WORLD_MIN <= x <= WORLD_MAX and WORLD_MIN <= y <= WORLD_MAX
+
+
 def load_points(csv_path: str) -> Tuple[List[CompassPoint], List[str]]:
     path = Path(csv_path).expanduser()
     if not path.exists():
@@ -217,13 +228,6 @@ def load_points(csv_path: str) -> Tuple[List[CompassPoint], List[str]]:
             )
             continue
 
-        if not (WORLD_MIN <= x <= WORLD_MAX and WORLD_MIN <= y <= WORLD_MAX):
-            warnings.append(
-                f"Skipped row {row_number}: point ({x:g}, {y:g}) is outside "
-                f"the {WORLD_MIN:g} to {WORLD_MAX:g} bounds."
-            )
-            continue
-
         raw_name = row.get("name")
         if _is_blank(raw_name):
             name = f"Point {fallback_counter}"
@@ -238,19 +242,7 @@ def load_points(csv_path: str) -> Tuple[List[CompassPoint], List[str]]:
         points.append(CompassPoint(name=name, x=x, y=y, group=group, row_number=row_number))
 
     if not points:
-        raise DataLoadError("No valid in-bounds points were found in the CSV.")
-
-    if len(points) < 3:
-        raise DataLoadError(
-            "At least 3 valid in-bounds points are required to build a Voronoi diagram."
-        )
-
-    unique_coords = {(round(p.x, 12), round(p.y, 12)) for p in points}
-    if len(unique_coords) < 3:
-        raise DataLoadError(
-            "At least 3 unique point locations are required to build a Voronoi diagram.\n"
-            "Several rows may share the exact same x/y coordinates."
-        )
+        raise DataLoadError("No valid finite points were found in the CSV.")
 
     return points, warnings
 
@@ -356,7 +348,17 @@ def _largest_polygon(geometry: object) -> Optional[Polygon]:
 def build_clipped_voronoi_cells(
     coords: np.ndarray,
 ) -> Tuple[List[Optional[List[Tuple[float, float]]]], Optional[str]]:
-    """Build Voronoi polygons clipped to the -10 to 10 square."""
+    """Build Voronoi polygons clipped to the graph square."""
+    if len(coords) < 3:
+        return [None for _ in coords], "At least 3 graph-bounds points are required to build a Voronoi diagram."
+
+    unique_coords = {(round(float(x), 12), round(float(y), 12)) for x, y in coords}
+    if len(unique_coords) < 3:
+        return (
+            [None for _ in coords],
+            "At least 3 unique graph-bounds point locations are required to build a Voronoi diagram.",
+        )
+
     bounds = box(WORLD_MIN, WORLD_MIN, WORLD_MAX, WORLD_MAX)
 
     try:
@@ -436,6 +438,10 @@ class NewPoliticalCompassApp:
         self.category_unique_coord_to_point_index: List[int] = []
         self.category_voronoi_cells: List[Optional[List[Tuple[float, float]]]] = []
         self.category_voronoi_warning: Optional[str] = None
+        self.view_min_x = WORLD_MIN
+        self.view_max_x = WORLD_MAX
+        self.view_min_y = WORLD_MIN
+        self.view_max_y = WORLD_MAX
 
         self.selected_index: Optional[int] = None
         self.listbox_indices: List[int] = []
@@ -471,13 +477,17 @@ class NewPoliticalCompassApp:
         return coord_index
 
     def _build_unique_coords(
-        self, points: Sequence[CompassPoint]
+        self, points: Sequence[CompassPoint],
+        in_bounds_only: bool = False,
     ) -> Tuple[np.ndarray, List[int]]:
         coords: List[Tuple[float, float]] = []
         representative_indices: List[int] = []
         seen: set[Tuple[float, float]] = set()
 
         for index, point in enumerate(points):
+            if in_bounds_only and not is_in_graph_bounds(point.x, point.y):
+                continue
+
             key = (round(point.x, 12), round(point.y, 12))
             if key in seen:
                 continue
@@ -486,6 +496,37 @@ class NewPoliticalCompassApp:
             representative_indices.append(index)
 
         return np.asarray(coords, dtype=float), representative_indices
+
+    def _update_view_bounds(self) -> None:
+        graph_points = [
+            point
+            for point in [*self.points, *self.category_points]
+            if is_in_graph_bounds(point.x, point.y)
+        ]
+        x_values = [WORLD_MIN, WORLD_MAX, *[point.x for point in graph_points]]
+        y_values = [WORLD_MIN, WORLD_MAX, *[point.y for point in graph_points]]
+
+        min_x = min(x_values)
+        max_x = max(x_values)
+        min_y = min(y_values)
+        max_y = max(y_values)
+
+        x_padding = 0.0 if (min_x == WORLD_MIN and max_x == WORLD_MAX) else 0.25
+        y_padding = 0.0 if (min_y == WORLD_MIN and max_y == WORLD_MAX) else 0.25
+
+        min_x -= x_padding
+        max_x += x_padding
+        min_y -= y_padding
+        max_y += y_padding
+
+        span = max(max_x - min_x, max_y - min_y)
+        center_x = (min_x + max_x) / 2
+        center_y = (min_y + max_y) / 2
+
+        self.view_min_x = center_x - span / 2
+        self.view_max_x = center_x + span / 2
+        self.view_min_y = center_y - span / 2
+        self.view_max_y = center_y + span / 2
 
     def _apply_dataset(self, dataset_index: int) -> None:
         dataset = self.datasets[dataset_index]
@@ -498,10 +539,13 @@ class NewPoliticalCompassApp:
         self.selected_index = None
         self.listbox_indices = []
         self.coord_to_point_indices = self._build_coord_index()
-        self.unique_coords, self.unique_coord_to_point_index = self._build_unique_coords(self.points)
+        self._update_view_bounds()
+        self.unique_coords, self.unique_coord_to_point_index = self._build_unique_coords(
+            self.points, in_bounds_only=True
+        )
         self.voronoi_cells, self.voronoi_warning = build_clipped_voronoi_cells(self.unique_coords)
-        self.category_unique_coords, self.category_unique_coord_to_point_index = self._build_unique_coords(
-            self.category_points
+        self.category_unique_coords, self.category_unique_coord_to_point_index = (
+            self._build_unique_coords(self.category_points, in_bounds_only=True)
         )
         self.category_voronoi_cells, self.category_voronoi_warning = build_clipped_voronoi_cells(
             self.category_unique_coords
@@ -571,8 +615,11 @@ class NewPoliticalCompassApp:
         )
         detail_left_label.pack(side=tk.LEFT, padx=(0, 6))
 
+        detail_slider_frame = tk.Frame(detail_frame, bg=PANEL_BACKGROUND)
+        detail_slider_frame.pack(side=tk.LEFT)
+
         self.detail_scale = tk.Scale(
-            detail_frame,
+            detail_slider_frame,
             from_=1,
             to=len(self.datasets),
             orient=tk.HORIZONTAL,
@@ -584,12 +631,24 @@ class NewPoliticalCompassApp:
             troughcolor="#303030",
             highlightthickness=0,
             relief=tk.FLAT,
-            showvalue=True,
+            showvalue=False,
             resolution=1,
-            length=130,
+            length=132,
             font=("Helvetica Neue", 10),
         )
-        self.detail_scale.pack(side=tk.LEFT)
+        self.detail_scale.pack(side=tk.TOP, fill=tk.X)
+
+        detail_ticks = tk.Frame(detail_slider_frame, bg=PANEL_BACKGROUND)
+        detail_ticks.pack(side=tk.TOP, fill=tk.X)
+        for index in range(len(self.datasets)):
+            tick_label = tk.Label(
+                detail_ticks,
+                text=str(index + 1),
+                bg=PANEL_BACKGROUND,
+                fg=TEXT_COLOR,
+                font=("Helvetica Neue", 9),
+            )
+            tick_label.pack(side=tk.LEFT, expand=True)
 
         detail_right_label = tk.Label(
             detail_frame,
@@ -719,17 +778,33 @@ class NewPoliticalCompassApp:
         self.results_listbox.delete(0, tk.END)
         self._update_status()
         self._update_detail_slider()
-        self.draw_plot(keep_view=True)
+        self.draw_plot()
         self._notify_active_dataset_warnings()
 
     def _update_detail_slider(self) -> None:
         self.detail_var.set(self.active_dataset_index + 1)
 
     def _connect_events(self) -> None:
-        self.canvas.mpl_connect("scroll_event", self._on_scroll)
-        self.canvas.mpl_connect("button_press_event", self._on_mouse_press)
-        self.canvas.mpl_connect("motion_notify_event", self._on_mouse_move)
-        self.canvas.mpl_connect("button_release_event", self._on_mouse_release)
+        self.canvas.mpl_connect("scroll_event", self._handle_scroll_event)
+        self.canvas.mpl_connect("button_press_event", self._handle_mouse_press_event)
+        self.canvas.mpl_connect("motion_notify_event", self._handle_mouse_move_event)
+        self.canvas.mpl_connect("button_release_event", self._handle_mouse_release_event)
+
+    def _handle_scroll_event(self, event: Event) -> None:
+        if isinstance(event, MouseEvent):
+            self._on_scroll(event)
+
+    def _handle_mouse_press_event(self, event: Event) -> None:
+        if isinstance(event, MouseEvent):
+            self._on_mouse_press(event)
+
+    def _handle_mouse_move_event(self, event: Event) -> None:
+        if isinstance(event, MouseEvent):
+            self._on_mouse_move(event)
+
+    def _handle_mouse_release_event(self, event: Event) -> None:
+        if isinstance(event, MouseEvent):
+            self._on_mouse_release(event)
 
     # ------------------------------------------------------------------
     # Drawing
@@ -738,16 +813,20 @@ class NewPoliticalCompassApp:
     def _setup_axes(self) -> None:
         self.ax.set_facecolor(BACKGROUND)
         self.ax.set_aspect("equal", adjustable="box")
-        self.ax.set_xlim(WORLD_MIN, WORLD_MAX)
-        self.ax.set_ylim(WORLD_MIN, WORLD_MAX)
+        self.ax.set_xlim(self.view_min_x, self.view_max_x)
+        self.ax.set_ylim(self.view_min_y, self.view_max_y)
 
-        major_ticks = np.arange(WORLD_MIN, WORLD_MAX + 1, 2)
+        major_ticks = np.arange(COMPASS_MIN, COMPASS_MAX + 1, 2)
         minor_ticks = np.arange(WORLD_MIN, WORLD_MAX + 0.5, 1)
         self.ax.set_xticks(major_ticks)
         self.ax.set_yticks(major_ticks)
         self.ax.set_xticks(minor_ticks, minor=True)
         self.ax.set_yticks(minor_ticks, minor=True)
 
+        self.ax.axvspan(WORLD_MIN, COMPASS_MIN, color=OUTER_BAND, alpha=0.28, zorder=0.1)
+        self.ax.axvspan(COMPASS_MAX, WORLD_MAX, color=OUTER_BAND, alpha=0.28, zorder=0.1)
+        self.ax.axhspan(WORLD_MIN, COMPASS_MIN, color=OUTER_BAND, alpha=0.28, zorder=0.1)
+        self.ax.axhspan(COMPASS_MAX, WORLD_MAX, color=OUTER_BAND, alpha=0.28, zorder=0.1)
         self.ax.grid(which="major", color=GRID_MAJOR, linewidth=0.75, alpha=0.75)
         self.ax.grid(which="minor", color=GRID_MINOR, linewidth=0.45, alpha=0.85)
         self.ax.axhline(0, color=AXIS_COLOR, linewidth=1.2, alpha=0.9, zorder=2)
@@ -763,8 +842,8 @@ class NewPoliticalCompassApp:
         self.fig.subplots_adjust(left=0.06, right=0.98, top=0.98, bottom=0.06)
 
     def draw_plot(self, keep_view: bool = False) -> None:
-        old_xlim = self.ax.get_xlim() if keep_view else (WORLD_MIN, WORLD_MAX)
-        old_ylim = self.ax.get_ylim() if keep_view else (WORLD_MIN, WORLD_MAX)
+        old_xlim = self.ax.get_xlim() if keep_view else (self.view_min_x, self.view_max_x)
+        old_ylim = self.ax.get_ylim() if keep_view else (self.view_min_y, self.view_max_y)
 
         self.ax.clear()
         self._setup_axes()
@@ -793,16 +872,16 @@ class NewPoliticalCompassApp:
 
         boundary = MplPolygon(
             [
-                (WORLD_MIN, WORLD_MIN),
-                (WORLD_MAX, WORLD_MIN),
-                (WORLD_MAX, WORLD_MAX),
-                (WORLD_MIN, WORLD_MAX),
+                (COMPASS_MIN, COMPASS_MIN),
+                (COMPASS_MAX, COMPASS_MIN),
+                (COMPASS_MAX, COMPASS_MAX),
+                (COMPASS_MIN, COMPASS_MAX),
             ],
             closed=True,
             fill=False,
-            edgecolor="#888888",
-            linewidth=1.2,
-            alpha=0.8,
+            edgecolor="#d0d0d0",
+            linewidth=2.3,
+            alpha=0.9,
             zorder=4,
         )
         self.ax.add_patch(boundary)
@@ -857,31 +936,90 @@ class NewPoliticalCompassApp:
             zorder=4.5,
         )
 
+    def _label_position(
+        self,
+        point: CompassPoint,
+        text: str,
+        fontsize: float,
+        offset: float,
+    ) -> Tuple[float, float, str, str, float]:
+        xlim = self.ax.get_xlim()
+        ylim = self.ax.get_ylim()
+        bbox_width = max(float(self.ax.bbox.width), 1.0)
+        bbox_height = max(float(self.ax.bbox.height), 1.0)
+        data_per_pixel_x = (xlim[1] - xlim[0]) / bbox_width
+        data_per_pixel_y = (ylim[1] - ylim[0]) / bbox_height
+
+        max_font_pixels = max(3.0, (bbox_width - 8) / (max(len(text), 1) * 0.56))
+        font_pixels = min(fontsize * self.fig.dpi / 72.0, max_font_pixels)
+        fontsize = font_pixels * 72.0 / self.fig.dpi
+        label_width = max(len(text), 1) * font_pixels * 0.56 * data_per_pixel_x
+        label_height = font_pixels * 1.25 * data_per_pixel_y
+        margin_x = 4 * data_per_pixel_x
+        margin_y = 4 * data_per_pixel_y
+
+        x = point.x + offset
+        ha = "left"
+        if x + label_width > xlim[1] - margin_x:
+            x = point.x - offset
+            ha = "right"
+
+        if ha == "left":
+            x = max(x, xlim[0] + margin_x)
+            if x + label_width > xlim[1] - margin_x:
+                x = max(xlim[0] + margin_x, xlim[1] - margin_x - label_width)
+        else:
+            x = min(x, xlim[1] - margin_x)
+            if x - label_width < xlim[0] + margin_x:
+                x = min(xlim[1] - margin_x, xlim[0] + margin_x + label_width)
+
+        y = point.y + offset
+        va = "bottom"
+        if y + label_height > ylim[1] - margin_y:
+            y = point.y - offset
+            va = "top"
+
+        if va == "bottom":
+            y = max(y, ylim[0] + margin_y)
+            y = min(y, ylim[1] - margin_y - label_height)
+        else:
+            y = min(y, ylim[1] - margin_y)
+            y = max(y, ylim[0] + margin_y + label_height)
+
+        return x, y, ha, va, fontsize
+
     def _draw_labels(self) -> None:
         for index, point in enumerate(self.points):
             is_selected = index == self.selected_index
+            fontsize = 9.5 if is_selected else 8.5
+            x, y, ha, va, fontsize = self._label_position(point, point.name, fontsize, 0.08)
             self.ax.text(
-                point.x + 0.08,
-                point.y + 0.08,
+                x,
+                y,
                 point.name,
                 color=SELECTED_COLOR if is_selected else TEXT_COLOR,
-                fontsize=9.5 if is_selected else 8.5,
+                fontsize=fontsize,
                 fontweight="bold" if is_selected else "normal",
                 alpha=1.0 if is_selected else 0.82,
+                ha=ha,
+                va=va,
                 zorder=7 if is_selected else 6,
                 clip_on=True,
             )
 
     def _draw_category_labels(self) -> None:
         for point in self.category_points:
+            x, y, ha, va, fontsize = self._label_position(point, point.name, 10, 0.12)
             self.ax.text(
-                point.x + 0.12,
-                point.y + 0.12,
+                x,
+                y,
                 point.name,
                 color=CATEGORY_TEXT,
-                fontsize=10,
+                fontsize=fontsize,
                 fontweight="bold",
                 alpha=0.98,
+                ha=ha,
+                va=va,
                 zorder=4.5,
                 clip_on=True,
             )
@@ -1064,20 +1202,20 @@ class NewPoliticalCompassApp:
         else:
             scale = 1.18
 
-        new_width = float(np.clip(current_width * scale, MIN_VIEW_SPAN, WORLD_SPAN))
-        new_height = float(np.clip(current_height * scale, MIN_VIEW_SPAN, WORLD_SPAN))
+        new_width = float(np.clip(current_width * scale, MIN_VIEW_SPAN, self.view_max_x - self.view_min_x))
+        new_height = float(np.clip(current_height * scale, MIN_VIEW_SPAN, self.view_max_y - self.view_min_y))
 
         rel_x = (xdata - current_xlim[0]) / current_width if current_width else 0.5
         rel_y = (ydata - current_ylim[0]) / current_height if current_height else 0.5
 
         new_xmin = xdata - rel_x * new_width
         new_ymin = ydata - rel_y * new_height
-        new_xlim = self._clamp_limits(new_xmin, new_xmin + new_width)
-        new_ylim = self._clamp_limits(new_ymin, new_ymin + new_height)
+        new_xlim = self._clamp_x_limits(new_xmin, new_xmin + new_width)
+        new_ylim = self._clamp_y_limits(new_ymin, new_ymin + new_height)
 
         self.ax.set_xlim(*new_xlim)
         self.ax.set_ylim(*new_ylim)
-        self.canvas.draw_idle()
+        self.draw_plot(keep_view=True)
 
     def _on_mouse_press(self, event: MouseEvent) -> None:
         if (
@@ -1128,12 +1266,12 @@ class NewPoliticalCompassApp:
         dx_data = dx_pixels / bbox_width * width
         dy_data = dy_pixels / bbox_height * height
 
-        new_xlim = self._clamp_limits(xlim[0] - dx_data, xlim[1] - dx_data)
-        new_ylim = self._clamp_limits(ylim[0] - dy_data, ylim[1] - dy_data)
+        new_xlim = self._clamp_x_limits(xlim[0] - dx_data, xlim[1] - dx_data)
+        new_ylim = self._clamp_y_limits(ylim[0] - dy_data, ylim[1] - dy_data)
 
         self.ax.set_xlim(*new_xlim)
         self.ax.set_ylim(*new_ylim)
-        self.canvas.draw_idle()
+        self.draw_plot(keep_view=True)
 
     def _on_mouse_release(self, event: MouseEvent) -> None:
         if self.drag_start is None:
@@ -1153,21 +1291,34 @@ class NewPoliticalCompassApp:
         if nearest_index is not None:
             self.select_point(nearest_index, focus=False)
 
-    def _clamp_limits(self, low: float, high: float) -> Tuple[float, float]:
+    def _clamp_limits(
+        self,
+        low: float,
+        high: float,
+        view_min: float,
+        view_max: float,
+    ) -> Tuple[float, float]:
         span = high - low
-        span = float(np.clip(span, MIN_VIEW_SPAN, WORLD_SPAN))
+        max_span = view_max - view_min
+        span = float(np.clip(span, MIN_VIEW_SPAN, max_span))
 
         low = float(low)
         high = low + span
 
-        if low < WORLD_MIN:
-            low = WORLD_MIN
-            high = WORLD_MIN + span
-        if high > WORLD_MAX:
-            high = WORLD_MAX
-            low = WORLD_MAX - span
+        if low < view_min:
+            low = view_min
+            high = view_min + span
+        if high > view_max:
+            high = view_max
+            low = view_max - span
 
         return low, high
+
+    def _clamp_x_limits(self, low: float, high: float) -> Tuple[float, float]:
+        return self._clamp_limits(low, high, self.view_min_x, self.view_max_x)
+
+    def _clamp_y_limits(self, low: float, high: float) -> Tuple[float, float]:
+        return self._clamp_limits(low, high, self.view_min_y, self.view_max_y)
 
     def center_on_point(self, point: CompassPoint) -> None:
         current_xlim = self.ax.get_xlim()
@@ -1176,8 +1327,8 @@ class NewPoliticalCompassApp:
         width = min(current_xlim[1] - current_xlim[0], SEARCH_FOCUS_SPAN)
         height = min(current_ylim[1] - current_ylim[0], SEARCH_FOCUS_SPAN)
 
-        xlim = self._clamp_limits(point.x - width / 2, point.x + width / 2)
-        ylim = self._clamp_limits(point.y - height / 2, point.y + height / 2)
+        xlim = self._clamp_x_limits(point.x - width / 2, point.x + width / 2)
+        ylim = self._clamp_y_limits(point.y - height / 2, point.y + height / 2)
 
         self.ax.set_xlim(*xlim)
         self.ax.set_ylim(*ylim)
@@ -1203,14 +1354,16 @@ def main() -> None:
     root.withdraw()
 
     try:
-        original_points, original_warnings = load_points(CSV_PATH)
-        original_category_points, original_category_warnings = load_points(CSV_CATS)
-        new_points, new_warnings = load_points(CSV_PATH2)
-        new_category_points, new_category_warnings = load_points(CSV_CATS2)
-        pared_points, pared_warnings = load_points(CSV_PATH3)
-        pared_category_points, pared_category_warnings = load_points(CSV_CATS3)
-        compact_points, compact_warnings = load_points(CSV_PATH4)
-        compact_category_points, compact_category_warnings = load_points(CSV_CATS4)
+        points1, warnings1 = load_points(CSV_PATH)
+        category_points1, category_warnings1 = load_points(CSV_CATS)
+        points2, warnings2 = load_points(CSV_PATH2)
+        category_points2, category_warnings2 = load_points(CSV_CATS2)
+        points3, warnings3 = load_points(CSV_PATH3)
+        category_points3, category_warnings3 = load_points(CSV_CATS3)
+        points4, warnings4 = load_points(CSV_PATH4)
+        category_points4, category_warnings4 = load_points(CSV_CATS4)
+        points5, warnings5 = load_points(CSV_PATH5)
+        category_points5, category_warnings5 = load_points(CSV_CATS5)
     except DataLoadError as exc:
         print(exc, file=sys.stderr)
         messagebox.showerror(APP_TITLE, str(exc))
@@ -1220,31 +1373,38 @@ def main() -> None:
     datasets = [
         CompassDataset(
             label="Level 1",
-            points=original_points,
-            warnings=original_warnings,
-            category_points=original_category_points,
-            category_warnings=original_category_warnings,
+            points=points1,
+            warnings=warnings1,
+            category_points=category_points1,
+            category_warnings=category_warnings1,
         ),
         CompassDataset(
             label="Level 2",
-            points=new_points,
-            warnings=new_warnings,
-            category_points=new_category_points,
-            category_warnings=new_category_warnings,
+            points=points2,
+            warnings=warnings2,
+            category_points=category_points2,
+            category_warnings=category_warnings2,
         ),
         CompassDataset(
             label="Level 3",
-            points=pared_points,
-            warnings=pared_warnings,
-            category_points=pared_category_points,
-            category_warnings=pared_category_warnings,
+            points=points3,
+            warnings=warnings3,
+            category_points=category_points3,
+            category_warnings=category_warnings3,
         ),
         CompassDataset(
             label="Level 4",
-            points=compact_points,
-            warnings=compact_warnings,
-            category_points=compact_category_points,
-            category_warnings=compact_category_warnings,
+            points=points4,
+            warnings=warnings4,
+            category_points=category_points4,
+            category_warnings=category_warnings4,
+        ),
+        CompassDataset(
+            label="Level 5",
+            points=points5,
+            warnings=warnings5,
+            category_points=category_points5,
+            category_warnings=category_warnings5,
         ),
     ]
 
