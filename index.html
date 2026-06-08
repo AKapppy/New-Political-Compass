@@ -508,8 +508,8 @@
       <div class="detail-control" aria-label="Detail level">
         <span>Most detailed</span>
         <div class="detail-slider-wrap"> 
-          <input id="detail-slider" class="detail-slider" type="range" min="1" max="5" step="1" value="1" aria-label="Detail level">
-          <div class="detail-ticks" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
+          <input id="detail-slider" class="detail-slider" type="range" min="1" max="6" step="1" value="1" aria-label="Detail level">
+          <div class="detail-ticks" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span></div>
         </div>
         <span>Least detailed</span>
       </div>
@@ -566,6 +566,11 @@
         label: "Level 5",
         pointPath: "ideology_coordinates5.csv",
         categoryPath: "ideology_categories5.csv"
+      },
+      {
+        label: "Level 6",
+        pointPath: "ideology_coordinates6.csv",
+        categoryPath: "ideology_categories6.csv"
       }
     ];
     const GRAPH_MIN = -11;

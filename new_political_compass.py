@@ -58,11 +58,13 @@ CSV_PATH2 = str(Path(__file__).with_name("ideology_coordinates2.csv"))
 CSV_PATH3 = str(Path(__file__).with_name("ideology_coordinates3.csv"))
 CSV_PATH4 = str(Path(__file__).with_name("ideology_coordinates4.csv"))
 CSV_PATH5 = str(Path(__file__).with_name("ideology_coordinates5.csv"))
+CSV_PATH6 = str(Path(__file__).with_name("ideology_coordinates6.csv"))
 CSV_CATS = str(Path(__file__).with_name("ideology_categories.csv"))
 CSV_CATS2 = str(Path(__file__).with_name("ideology_categories2.csv"))
 CSV_CATS3 = str(Path(__file__).with_name("ideology_categories3.csv"))
 CSV_CATS4 = str(Path(__file__).with_name("ideology_categories4.csv"))
 CSV_CATS5 = str(Path(__file__).with_name("ideology_categories5.csv"))
+CSV_CATS6 = str(Path(__file__).with_name("ideology_categories6.csv"))
 
 APP_TITLE = "New Political Compass"
 GRAPH_MIN = -11.0
@@ -1364,6 +1366,8 @@ def main() -> None:
         category_points4, category_warnings4 = load_points(CSV_CATS4)
         points5, warnings5 = load_points(CSV_PATH5)
         category_points5, category_warnings5 = load_points(CSV_CATS5)
+        points6, warnings6 = load_points(CSV_PATH6)
+        category_points6, category_warnings6 = load_points(CSV_CATS6)
     except DataLoadError as exc:
         print(exc, file=sys.stderr)
         messagebox.showerror(APP_TITLE, str(exc))
@@ -1405,6 +1409,13 @@ def main() -> None:
             warnings=warnings5,
             category_points=category_points5,
             category_warnings=category_warnings5,
+        ),
+        CompassDataset(
+            label="Level 6",
+            points=points6,
+            warnings=warnings6,
+            category_points=category_points6,
+            category_warnings=category_warnings6,
         ),
     ]
 
