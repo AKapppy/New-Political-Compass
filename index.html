@@ -15,7 +15,7 @@
       --grid-major: #3a3a3a;
       --grid-minor: #242424;
       --axis: #b7b7b7;
-      --text: #e7e7e7;
+      --text: #fbfbfb;
       --muted: #a8a8a8;
       --point: #f4f4f4;
       --point-edge: #111111;
@@ -23,10 +23,10 @@
       --selected-ring: #ff4081;
       --voronoi-edge: #9be7ff;
       --voronoi-fill: #4fc3f7;
-      --category-edge: #45e56f;
+      --category-edge: #39c462;
       --category-fill: #27c35a;
       --category-point: #9ff6b4;
-      --category-text: #a7f3b9;
+      --category-text: #8fdca3;
       --tooltip: #222222;
       --tooltip-edge: #eeeeee;
       --focus: #7dd3fc;
@@ -63,7 +63,7 @@
 
     .topbar {
       display: grid;
-      grid-template-columns: auto auto auto minmax(220px, 420px) auto 1fr;
+      grid-template-columns: auto auto auto auto minmax(220px, 420px) auto 1fr;
       align-items: center;
       gap: 10px;
       padding: 8px 10px;
@@ -98,6 +98,7 @@
       margin: 0;
       accent-color: var(--selected-ring);
       cursor: pointer;
+      direction: rtl;
     }
 
     .detail-slider:focus-visible {
@@ -160,6 +161,21 @@
     .button:focus-visible {
       outline: 2px solid var(--focus);
       outline-offset: 2px;
+    }
+
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--text);
+      font-size: 11px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .toggle input {
+      margin: 0;
+      accent-color: var(--selected-ring);
     }
 
     .status {
@@ -318,16 +334,18 @@
 
     .cell {
       fill: var(--voronoi-fill);
-      fill-opacity: 0.18;
+      fill-opacity: 0.08;
       stroke: var(--voronoi-edge);
+      stroke-opacity: 0.52;
       stroke-width: 1.25;
       vector-effect: non-scaling-stroke;
     }
 
     .category-cell {
       fill: var(--category-fill);
-      fill-opacity: 0.1;
+      fill-opacity: 0.035;
       stroke: var(--category-edge);
+      stroke-opacity: 0.64;
       stroke-width: 1;
       vector-effect: non-scaling-stroke;
     }
@@ -506,13 +524,14 @@
     <header class="topbar">
       <h1 class="title">New Political Compass</h1>
       <div class="detail-control" aria-label="Detail level">
-        <span>Most detailed</span>
-        <div class="detail-slider-wrap"> 
-          <input id="detail-slider" class="detail-slider" type="range" min="1" max="6" step="1" value="1" aria-label="Detail level">
-          <div class="detail-ticks" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span></div>
-        </div>
         <span>Least detailed</span>
+        <div class="detail-slider-wrap"> 
+          <input id="detail-slider" class="detail-slider" type="range" min="1" max="10" step="1" value="10" aria-label="Detail level">
+          <div class="detail-ticks" aria-hidden="true"><span>10</span><span>9</span><span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span></div>
+        </div>
+        <span>Most detailed</span>
       </div>
+      <label class="toggle"><input id="show-extremes" type="checkbox">Show extremes</label>
       <label class="search-label" for="search">Search point:</label>
       <input id="search" class="search-input" type="search" autocomplete="off" placeholder="Search point">
       <div class="button-row">
@@ -571,6 +590,26 @@
         label: "Level 6",
         pointPath: "ideology_coordinates6.csv",
         categoryPath: "ideology_categories6.csv"
+      },
+      {
+        label: "Level 7",
+        pointPath: "ideology_coordinates7.csv",
+        categoryPath: "ideology_categories7.csv"
+      },
+      {
+        label: "Level 8",
+        pointPath: "ideology_coordinates8.csv",
+        categoryPath: "ideology_categories8.csv"
+      },
+      {
+        label: "Level 9",
+        pointPath: "ideology_coordinates9.csv",
+        categoryPath: "ideology_categories9.csv"
+      },
+      {
+        label: "Level 10",
+        pointPath: "ideology_coordinates10.csv",
+        categoryPath: "ideology_categories10.csv"
       }
     ];
     const GRAPH_MIN = -11;
@@ -588,10 +627,23 @@
     const SELECTED_LABEL_SIZE = 9.5;
     const CATEGORY_LABEL_SIZE = 10;
     const MOBILE_LABEL_BOOST = 1.3;
+    const LABEL_EDGE_MARGIN_PIXELS = 2;
+    const LABEL_PADDING_PIXELS = 0.5;
+    const LABEL_OFFSET_PIXELS = 4;
+    const CATEGORY_LABEL_OFFSET_PIXELS = 5;
+    const LABEL_ZOOMED_OUT_FRACTION = 0.32;
+    const LABEL_ZOOM_CURVE = 1.15;
+    const LABEL_MIN_VISIBLE = 28;
+    const LABEL_WIDTH_FACTOR = 0.46;
+    const LABEL_HEIGHT_FACTOR = 1.0;
+    const LABEL_ZOOM_SCALE_MAX = 2.2;
+    const LABEL_PRIORITY_FRACTION = 0.45;
+    const LABEL_OPEN_SPACE_MIN_PIXELS = 48;
+    const MANDATORY_LABEL_VORONOI_AREA = 4;
 
     const state = {
       datasets: [],
-      activeDatasetIndex: 0,
+      activeDatasetIndex: DATASETS.length - 1,
       points: [],
       categoryPoints: [],
       warnings: [],
@@ -600,16 +652,25 @@
       matches: [],
       transform: d3.zoomIdentity,
       coordIndex: new Map(),
+      categoryCoordKeys: new Set(),
+      voronoiAreas: new Map(),
+      categoryVoronoiAreas: new Map(),
+      ideologyNameFrequency: new Map(),
+      categoryNameFrequency: new Map(),
+      visibleIdeologyLabelIndices: new Set(),
+      visibleCategoryPoints: [],
+      showExtremes: false,
       viewBounds: {
-        minX: WORLD_MIN,
-        maxX: WORLD_MAX,
-        minY: WORLD_MIN,
-        maxY: WORLD_MAX
+        minX: COMPASS_MIN,
+        maxX: COMPASS_MAX,
+        minY: COMPASS_MIN,
+        maxY: COMPASS_MAX
       }
     };
 
     const elements = {
       detailSlider: document.getElementById("detail-slider"),
+      showExtremes: document.getElementById("show-extremes"),
       search: document.getElementById("search"),
       clear: document.getElementById("clear"),
       reset: document.getElementById("reset"),
@@ -623,13 +684,13 @@
 
     elements.svg.attr("viewBox", `0 0 ${PLOT_SIZE} ${PLOT_SIZE}`);
 
-    const categoryLabelLayer = elements.svg.append("g").attr("class", "category-label-layer");
     const root = elements.svg.append("g");
     const gridLayer = root.append("g").attr("class", "grid-layer");
-    const categoryCellLayer = root.append("g").attr("class", "category-cell-layer");
     const cellLayer = root.append("g").attr("class", "cell-layer");
+    const categoryCellLayer = root.append("g").attr("class", "category-cell-layer");
     const categoryPointLayer = root.append("g").attr("class", "category-point-layer");
     const pointLayer = root.append("g").attr("class", "point-layer");
+    const categoryLabelLayer = elements.svg.append("g").attr("class", "category-label-layer");
     const labelLayer = elements.svg.append("g").attr("class", "label-layer");
     const selectedLayer = elements.svg.append("g").attr("class", "selected-layer");
     const overlay = elements.svg.append("rect")
@@ -754,20 +815,28 @@
       return Math.min(max, Math.max(min, value));
     }
 
+    function currentGraphBounds() {
+      return state.showExtremes
+        ? { min: WORLD_MIN, max: WORLD_MAX }
+        : { min: COMPASS_MIN, max: COMPASS_MAX };
+    }
+
     function isInGraphBounds(point) {
-      return point.x >= WORLD_MIN && point.x <= WORLD_MAX && point.y >= WORLD_MIN && point.y <= WORLD_MAX;
+      const bounds = currentGraphBounds();
+      return point.x >= bounds.min && point.x <= bounds.max && point.y >= bounds.min && point.y <= bounds.max;
     }
 
     function updateViewBounds() {
+      const bounds = currentGraphBounds();
       const allPoints = [...state.points, ...state.categoryPoints].filter(isInGraphBounds);
-      const xValues = [WORLD_MIN, WORLD_MAX, ...allPoints.map((point) => point.x)];
-      const yValues = [WORLD_MIN, WORLD_MAX, ...allPoints.map((point) => point.y)];
+      const xValues = [bounds.min, bounds.max, ...allPoints.map((point) => point.x)];
+      const yValues = [bounds.min, bounds.max, ...allPoints.map((point) => point.y)];
       let minX = Math.min(...xValues);
       let maxX = Math.max(...xValues);
       let minY = Math.min(...yValues);
       let maxY = Math.max(...yValues);
-      const xPadding = minX === WORLD_MIN && maxX === WORLD_MAX ? 0 : 0.4;
-      const yPadding = minY === WORLD_MIN && maxY === WORLD_MAX ? 0 : 0.4;
+      const xPadding = minX === bounds.min && maxX === bounds.max ? 0 : 0.25;
+      const yPadding = minY === bounds.min && maxY === bounds.max ? 0 : 0.25;
       minX -= xPadding;
       maxX += xPadding;
       minY -= yPadding;
@@ -796,10 +865,11 @@
     }
 
     function graphRect() {
-      const left = xScale(WORLD_MIN);
-      const right = xScale(WORLD_MAX);
-      const top = yScale(WORLD_MAX);
-      const bottom = yScale(WORLD_MIN);
+      const bounds = currentGraphBounds();
+      const left = xScale(bounds.min);
+      const right = xScale(bounds.max);
+      const top = yScale(bounds.max);
+      const bottom = yScale(bounds.min);
       return { left, right, top, bottom };
     }
 
@@ -810,48 +880,163 @@
     }
 
     function labelZoomScale() {
-      return clamp(Math.sqrt(state.transform.k), 1, 2.8);
+      return clamp(Math.sqrt(Math.max(state.transform.k, 1)), 1, LABEL_ZOOM_SCALE_MAX);
     }
 
     function labelSize(baseSize) {
       return baseSize * compactViewportBoost() * labelZoomScale();
     }
 
-    function labelPlacement(point, text, baseSize) {
-      const padding = 4;
+    function pointIsVisible(point) {
+      const px = state.transform.applyX(xScale(point.x));
+      const py = state.transform.applyY(yScale(point.y));
+      return px >= 0 && px <= PLOT_SIZE && py >= 0 && py <= PLOT_SIZE;
+    }
+
+    function labelBoxesOverlap(first, second) {
+      const padding = LABEL_PADDING_PIXELS;
+      return !(
+        first.right + padding <= second.left
+        || first.left >= second.right + padding
+        || first.bottom + padding <= second.top
+        || first.top >= second.bottom + padding
+      );
+    }
+
+    function labelLimit(visibleCount) {
+      if (visibleCount <= 12) {
+        return visibleCount;
+      }
+
+      const maxSpan = Math.max(
+        state.viewBounds.maxX - state.viewBounds.minX,
+        state.viewBounds.maxY - state.viewBounds.minY
+      );
+      const currentSpan = maxSpan / Math.max(state.transform.k, 1);
+      const spanRange = Math.max(maxSpan - MIN_VIEW_SPAN, 1);
+      const zoomProgress = clamp((maxSpan - currentSpan) / spanRange, 0, 1);
+      const labelFraction = LABEL_ZOOMED_OUT_FRACTION
+        + (1 - LABEL_ZOOMED_OUT_FRACTION) * (zoomProgress ** LABEL_ZOOM_CURVE);
+      return Math.min(visibleCount, Math.max(LABEL_MIN_VISIBLE, Math.ceil(visibleCount * labelFraction)));
+    }
+
+    function labelPlacement(point, text, baseSize, offsetPixels, occupiedBoxes) {
       const naturalSize = labelSize(baseSize);
-      const maxSize = Math.max(1, (PLOT_SIZE - padding * 2) / (Math.max(text.length, 1) * 0.56));
+      const maxSize = Math.max(
+        3,
+        (PLOT_SIZE - LABEL_EDGE_MARGIN_PIXELS * 2 - 8) / (Math.max(text.length, 1) * LABEL_WIDTH_FACTOR)
+      );
       const size = Math.min(naturalSize, maxSize);
-      const width = Math.max(text.length, 1) * size * 0.56;
-      const height = size * 1.25;
-      const offset = Math.max(4, size * 0.48);
+      const width = Math.max(text.length, 1) * size * LABEL_WIDTH_FACTOR;
+      const height = size * LABEL_HEIGHT_FACTOR;
       const px = state.transform.applyX(xScale(point.x));
       const py = state.transform.applyY(yScale(point.y));
 
-      let x = px + offset;
-      let anchor = "start";
-      if (x + width > PLOT_SIZE - padding) {
-        x = px - offset;
-        anchor = "end";
+      if (px < 0 || px > PLOT_SIZE || py < 0 || py > PLOT_SIZE) {
+        return null;
       }
 
-      if (anchor === "start") {
-        x = clamp(x, padding, PLOT_SIZE - padding - width);
-      } else {
-        x = clamp(x, padding + width, PLOT_SIZE - padding);
+      const horizontalOrder = px <= PLOT_SIZE / 2 ? ["start", "end"] : ["end", "start"];
+      const verticalOrder = py <= PLOT_SIZE / 2 ? ["bottom", "top"] : ["top", "bottom"];
+      const orientations = [
+        [horizontalOrder[0], verticalOrder[0]],
+        [horizontalOrder[1], verticalOrder[0]],
+        ["middle", verticalOrder[0]],
+        [horizontalOrder[0], verticalOrder[1]],
+        [horizontalOrder[1], verticalOrder[1]],
+        ["middle", verticalOrder[1]]
+      ];
+
+      function clampBox(box) {
+        const leftLimit = LABEL_EDGE_MARGIN_PIXELS;
+        const rightLimit = PLOT_SIZE - LABEL_EDGE_MARGIN_PIXELS;
+        const topLimit = LABEL_EDGE_MARGIN_PIXELS;
+        const bottomLimit = PLOT_SIZE - LABEL_EDGE_MARGIN_PIXELS;
+        const left = width >= rightLimit - leftLimit
+          ? leftLimit
+          : clamp(box.left, leftLimit, rightLimit - width);
+        const top = height >= bottomLimit - topLimit
+          ? topLimit
+          : clamp(box.top, topLimit, bottomLimit - height);
+        return { left, top, right: left + width, bottom: top + height };
       }
 
-      let y = py - offset;
-      if (y - height < padding) {
-        y = py + offset + height;
-      }
-      y = clamp(y, padding + height, PLOT_SIZE - padding);
+      for (const [anchor, vertical] of orientations) {
+        let left;
+        let right;
+        let top;
+        let bottom;
 
-      return { x, y, anchor, size };
+        if (anchor === "start") {
+          left = px + offsetPixels;
+          right = left + width;
+        } else if (anchor === "end") {
+          right = px - offsetPixels;
+          left = right - width;
+        } else {
+          left = px - width / 2;
+          right = px + width / 2;
+        }
+
+        if (vertical === "bottom") {
+          top = py + offsetPixels;
+          bottom = top + height;
+        } else {
+          bottom = py - offsetPixels;
+          top = bottom - height;
+        }
+
+        const box = clampBox({ left, top, right, bottom });
+        if (occupiedBoxes.some((occupied) => labelBoxesOverlap(box, occupied))) {
+          continue;
+        }
+
+        const x = anchor === "start"
+          ? box.left
+          : anchor === "end"
+            ? box.right
+            : (box.left + box.right) / 2;
+        const y = box.top + size;
+        return { x, y, anchor, size, box };
+      }
+
+      return null;
     }
 
     function coordKey(point) {
       return `${point.x.toFixed(12)},${point.y.toFixed(12)}`;
+    }
+
+    function polygonArea(coords) {
+      if (!coords || coords.length < 3) {
+        return 0;
+      }
+
+      let area = 0;
+      coords.forEach(([x1, y1], index) => {
+        const [x2, y2] = coords[(index + 1) % coords.length];
+        area += x1 * y2 - x2 * y1;
+      });
+      return Math.abs(area) / 2;
+    }
+
+    function screenPolygonAreaToDataArea(area) {
+      const [minX, maxX] = xScale.domain();
+      const [minY, maxY] = yScale.domain();
+      return area * Math.abs((maxX - minX) / PLOT_SIZE) * Math.abs((maxY - minY) / PLOT_SIZE);
+    }
+
+    function normalizeLabelKey(text) {
+      return text.trim().toLowerCase().replace(/\s+/g, " ");
+    }
+
+    function buildNameFrequency(pointGroups) {
+      const frequencies = new Map();
+      pointGroups.forEach((points) => {
+        const keys = new Set(points.map((point) => normalizeLabelKey(point.name)));
+        keys.forEach((key) => frequencies.set(key, (frequencies.get(key) || 0) + 1));
+      });
+      return frequencies;
     }
 
     function buildCoordIndex() {
@@ -863,6 +1048,63 @@
         }
         state.coordIndex.get(key).push(index);
       });
+      state.categoryCoordKeys = new Set(state.categoryPoints.map(coordKey));
+    }
+
+    function ideologySortKey(index, point) {
+      const selectedRank = index === state.selectedIndex ? 0 : 1;
+      const frequency = state.ideologyNameFrequency.get(normalizeLabelKey(point.name)) || 0;
+      return [selectedRank, -frequency, point.rowNumber, point.name.toLowerCase()];
+    }
+
+    function categorySortKey(point) {
+      const frequency = state.categoryNameFrequency.get(normalizeLabelKey(point.name)) || 0;
+      return [-frequency, point.rowNumber, point.name.toLowerCase()];
+    }
+
+    function compareKeys(first, second) {
+      for (let index = 0; index < first.length; index += 1) {
+        if (first[index] < second[index]) {
+          return -1;
+        }
+        if (first[index] > second[index]) {
+          return 1;
+        }
+      }
+      return 0;
+    }
+
+    function pointScreenOpenness(point, neighborPoints) {
+      const px = state.transform.applyX(xScale(point.x));
+      const py = state.transform.applyY(yScale(point.y));
+      let nearestDistance = Infinity;
+
+      neighborPoints.forEach((neighbor) => {
+        if (neighbor === point) {
+          return;
+        }
+
+        const neighborX = state.transform.applyX(xScale(neighbor.x));
+        const neighborY = state.transform.applyY(yScale(neighbor.y));
+        const distance = Math.hypot(px - neighborX, py - neighborY);
+        nearestDistance = Math.min(nearestDistance, distance);
+      });
+
+      return nearestDistance;
+    }
+
+    function visibleIdeologyPointsByPriority() {
+      return state.points
+        .map((point, index) => ({ point, index }))
+        .filter(({ point }) => (
+          isInGraphBounds(point)
+          && pointIsVisible(point)
+          && !state.categoryCoordKeys.has(coordKey(point))
+        ))
+        .sort((first, second) => compareKeys(
+          ideologySortKey(first.index, first.point),
+          ideologySortKey(second.index, second.point)
+        ));
     }
 
     function updateStatus() {
@@ -876,38 +1118,41 @@
 
     function drawGrid() {
       gridLayer.selectAll("*").remove();
-      const minorTicks = d3.range(WORLD_MIN, WORLD_MAX + 0.5, 1);
+      const bounds = currentGraphBounds();
+      const minorTicks = d3.range(bounds.min, bounds.max + 0.5, 1);
       const majorTicks = d3.range(COMPASS_MIN, COMPASS_MAX + 1, 2);
       const graph = graphRect();
       const rect = compassRect();
 
-      gridLayer.append("rect")
-        .attr("class", "outer-band")
-        .attr("x", graph.left)
-        .attr("y", graph.top)
-        .attr("width", rect.left - graph.left)
-        .attr("height", graph.bottom - graph.top);
+      if (state.showExtremes) {
+        gridLayer.append("rect")
+          .attr("class", "outer-band")
+          .attr("x", graph.left)
+          .attr("y", graph.top)
+          .attr("width", rect.left - graph.left)
+          .attr("height", graph.bottom - graph.top);
 
-      gridLayer.append("rect")
-        .attr("class", "outer-band")
-        .attr("x", rect.right)
-        .attr("y", graph.top)
-        .attr("width", graph.right - rect.right)
-        .attr("height", graph.bottom - graph.top);
+        gridLayer.append("rect")
+          .attr("class", "outer-band")
+          .attr("x", rect.right)
+          .attr("y", graph.top)
+          .attr("width", graph.right - rect.right)
+          .attr("height", graph.bottom - graph.top);
 
-      gridLayer.append("rect")
-        .attr("class", "outer-band")
-        .attr("x", graph.left)
-        .attr("y", graph.top)
-        .attr("width", graph.right - graph.left)
-        .attr("height", rect.top - graph.top);
+        gridLayer.append("rect")
+          .attr("class", "outer-band")
+          .attr("x", graph.left)
+          .attr("y", graph.top)
+          .attr("width", graph.right - graph.left)
+          .attr("height", rect.top - graph.top);
 
-      gridLayer.append("rect")
-        .attr("class", "outer-band")
-        .attr("x", graph.left)
-        .attr("y", rect.bottom)
-        .attr("width", graph.right - graph.left)
-        .attr("height", graph.bottom - rect.bottom);
+        gridLayer.append("rect")
+          .attr("class", "outer-band")
+          .attr("x", graph.left)
+          .attr("y", rect.bottom)
+          .attr("width", graph.right - graph.left)
+          .attr("height", graph.bottom - rect.bottom);
+      }
 
       gridLayer.selectAll(".minor-x")
         .data(minorTicks)
@@ -1010,8 +1255,9 @@
       return unique;
     }
 
-    function drawVoronoiCells(layer, points, className) {
+    function drawVoronoiCells(layer, points, className, areaMap) {
       layer.selectAll("*").remove();
+      areaMap.clear();
       const unique = uniquePoints(points.filter(isInGraphBounds));
       if (unique.length < 3) {
         return;
@@ -1021,6 +1267,15 @@
       const rect = graphRect();
       const voronoi = delaunay.voronoi([rect.left, rect.top, rect.right, rect.bottom]);
 
+      unique.forEach((point, index) => {
+        const polygon = voronoi.cellPolygon(index);
+        if (!polygon) {
+          return;
+        }
+        const screenArea = polygonArea(polygon);
+        areaMap.set(coordKey(point), screenPolygonAreaToDataArea(screenArea));
+      });
+
       layer.selectAll("path")
         .data(unique)
         .join("path")
@@ -1029,78 +1284,213 @@
     }
 
     function drawVoronoi() {
-      drawVoronoiCells(categoryCellLayer, state.categoryPoints, "cell category-cell");
-      drawVoronoiCells(cellLayer, state.points, "cell");
+      drawVoronoiCells(cellLayer, state.points, "cell", state.voronoiAreas);
+      drawVoronoiCells(categoryCellLayer, state.categoryPoints, "cell category-cell", state.categoryVoronoiAreas);
     }
 
-    function drawPoints() {
+    function drawPoints(pointIndices) {
+      const indices = new Set(pointIndices);
+      const inverseScale = 1 / Math.max(state.transform.k, 1);
+      if (
+        state.selectedIndex !== null
+        && isInGraphBounds(state.points[state.selectedIndex])
+        && pointIsVisible(state.points[state.selectedIndex])
+      ) {
+        indices.add(state.selectedIndex);
+      }
+
+      const pointData = [...indices]
+        .sort((first, second) => first - second)
+        .map((index) => ({ index, point: state.points[index] }));
+
       pointLayer.selectAll("circle")
-        .data(state.points)
+        .data(pointData, ({ index }) => index)
         .join("circle")
         .attr("class", "point")
-        .attr("r", POINT_RADIUS)
-        .attr("cx", (point) => xScale(point.x))
-        .attr("cy", (point) => yScale(point.y))
-        .on("click", (event, point) => {
+        .attr("r", POINT_RADIUS * inverseScale)
+        .attr("stroke-width", 0.75 * inverseScale)
+        .attr("cx", ({ point }) => xScale(point.x))
+        .attr("cy", ({ point }) => yScale(point.y))
+        .on("click", (event, { index }) => {
           event.stopPropagation();
-          const index = state.points.indexOf(point);
           selectPoint(index, false);
         });
     }
 
-    function drawCategoryPoints() {
+    function drawCategoryPoints(points) {
+      const inverseScale = 1 / Math.max(state.transform.k, 1);
       categoryPointLayer.selectAll("circle")
-        .data(state.categoryPoints)
+        .data(points, (point) => coordKey(point))
         .join("circle")
         .attr("class", "category-point")
-        .attr("r", POINT_RADIUS * 1.7)
+        .attr("r", POINT_RADIUS * 1.7 * inverseScale)
+        .attr("stroke-width", inverseScale)
         .attr("cx", (point) => xScale(point.x))
         .attr("cy", (point) => yScale(point.y));
     }
 
-    function drawLabels() {
+    function drawLabels(visiblePoints, occupiedBoxes) {
+      const labelBoxes = [...occupiedBoxes];
+      const labelCount = labelLimit(visiblePoints.length);
+      const visibleLabelData = [];
+      const drawnIndices = new Set();
+      const mandatoryLabelAreas = new Map();
+      const neighborPoints = [
+        ...visiblePoints.map(({ point }) => point),
+        ...state.categoryPoints.filter((point) => isInGraphBounds(point) && pointIsVisible(point))
+      ];
+
+      visiblePoints.forEach(({ point, index }) => {
+        const area = state.voronoiAreas.get(coordKey(point)) || 0;
+        if (area > MANDATORY_LABEL_VORONOI_AREA) {
+          mandatoryLabelAreas.set(index, area);
+        }
+      });
+
+      function tryDrawLabel(point, index, respectLimit = true) {
+        if ((respectLimit && drawnIndices.size >= labelCount) || drawnIndices.has(index)) {
+          return false;
+        }
+
+        const baseSize = index === state.selectedIndex ? SELECTED_LABEL_SIZE : LABEL_SIZE;
+        const placed = labelPlacement(point, point.name, baseSize, LABEL_OFFSET_PIXELS, labelBoxes);
+        if (!placed) {
+          return false;
+        }
+
+        visibleLabelData.push({ point, index, placed });
+        labelBoxes.push(placed.box);
+        drawnIndices.add(index);
+        return true;
+      }
+
+      const mandatoryPoints = visiblePoints
+        .filter(({ index }) => mandatoryLabelAreas.has(index))
+        .sort((first, second) => {
+          const firstArea = mandatoryLabelAreas.get(first.index) || 0;
+          const secondArea = mandatoryLabelAreas.get(second.index) || 0;
+          if (firstArea !== secondArea) {
+            return secondArea - firstArea;
+          }
+          return compareKeys(
+            ideologySortKey(first.index, first.point),
+            ideologySortKey(second.index, second.point)
+          );
+        });
+
+      for (const { point, index } of mandatoryPoints) {
+        tryDrawLabel(point, index, false);
+      }
+
+      const priorityTarget = Math.min(
+        labelCount,
+        Math.max(1, Math.ceil(labelCount * LABEL_PRIORITY_FRACTION))
+      );
+
+      for (const { point, index } of visiblePoints) {
+        if (drawnIndices.size >= priorityTarget) {
+          break;
+        }
+        tryDrawLabel(point, index);
+      }
+
+      const openSpacePoints = visiblePoints
+        .filter(({ index }) => !drawnIndices.has(index))
+        .map(({ point, index }) => ({
+          point,
+          index,
+          openness: pointScreenOpenness(point, neighborPoints)
+        }))
+        .filter(({ openness }) => openness >= LABEL_OPEN_SPACE_MIN_PIXELS)
+        .sort((first, second) => {
+          if (first.openness !== second.openness) {
+            return second.openness - first.openness;
+          }
+          return compareKeys(
+            ideologySortKey(first.index, first.point),
+            ideologySortKey(second.index, second.point)
+          );
+        });
+
+      for (const { point, index } of openSpacePoints) {
+        if (drawnIndices.size >= labelCount) {
+          break;
+        }
+        tryDrawLabel(point, index);
+      }
+
+      for (const { point, index } of visiblePoints) {
+        if (drawnIndices.size >= labelCount) {
+          break;
+        }
+        tryDrawLabel(point, index);
+      }
+
+      state.visibleIdeologyLabelIndices = new Set(visibleLabelData.map(({ index }) => index));
+
       labelLayer.selectAll("text")
-        .data(state.points)
+        .data(visibleLabelData, ({ index }) => index)
         .join("text")
-        .attr("class", (_point, index) => index === state.selectedIndex ? "label selected" : "label")
-        .attr("x", (point, index) => {
-          const baseSize = index === state.selectedIndex ? SELECTED_LABEL_SIZE : LABEL_SIZE;
-          return labelPlacement(point, point.name, baseSize).x;
-        })
-        .attr("y", (point, index) => {
-          const baseSize = index === state.selectedIndex ? SELECTED_LABEL_SIZE : LABEL_SIZE;
-          return labelPlacement(point, point.name, baseSize).y;
-        })
-        .attr("text-anchor", (point, index) => {
-          const baseSize = index === state.selectedIndex ? SELECTED_LABEL_SIZE : LABEL_SIZE;
-          return labelPlacement(point, point.name, baseSize).anchor;
-        })
-        .style("font-size", (_point, index) => {
-          const baseSize = index === state.selectedIndex ? SELECTED_LABEL_SIZE : LABEL_SIZE;
-          return `${labelPlacement(_point, _point.name, baseSize).size}px`;
-        })
-        .style("stroke-width", (_point, index) => {
-          const baseSize = index === state.selectedIndex ? SELECTED_LABEL_SIZE : LABEL_SIZE;
-          const placed = labelPlacement(_point, _point.name, baseSize);
-          return `${Math.max(2, placed.size * 0.22)}px`;
-        })
-        .text((point) => point.name);
+        .attr("class", ({ index }) => index === state.selectedIndex ? "label selected" : "label")
+        .attr("x", ({ placed }) => placed.x)
+        .attr("y", ({ placed }) => placed.y)
+        .attr("text-anchor", ({ placed }) => placed.anchor)
+        .style("font-size", ({ placed }) => `${placed.size}px`)
+        .style("stroke-width", ({ placed }) => `${Math.max(2, placed.size * 0.22)}px`)
+        .text(({ point }) => point.name);
+
+      return state.visibleIdeologyLabelIndices;
     }
 
     function drawCategoryLabels() {
+      const labelBoxes = [];
+      const visibleCategoryData = [];
+      const visiblePoints = state.categoryPoints
+        .filter((point) => isInGraphBounds(point) && pointIsVisible(point))
+        .sort((first, second) => {
+          const firstArea = state.categoryVoronoiAreas.get(coordKey(first)) || 0;
+          const secondArea = state.categoryVoronoiAreas.get(coordKey(second)) || 0;
+          const firstIsMandatory = firstArea > MANDATORY_LABEL_VORONOI_AREA;
+          const secondIsMandatory = secondArea > MANDATORY_LABEL_VORONOI_AREA;
+
+          if (firstIsMandatory !== secondIsMandatory) {
+            return firstIsMandatory ? -1 : 1;
+          }
+          if (firstIsMandatory && firstArea !== secondArea) {
+            return secondArea - firstArea;
+          }
+          return compareKeys(categorySortKey(first), categorySortKey(second));
+        });
+
+      visiblePoints.forEach((point) => {
+        const placed = labelPlacement(
+          point,
+          point.name,
+          CATEGORY_LABEL_SIZE,
+          CATEGORY_LABEL_OFFSET_PIXELS,
+          labelBoxes
+        );
+        if (!placed) {
+          return;
+        }
+        visibleCategoryData.push({ point, placed });
+        labelBoxes.push(placed.box);
+      });
+
+      state.visibleCategoryPoints = visibleCategoryData.map(({ point }) => point);
+
       categoryLabelLayer.selectAll("text")
-        .data(state.categoryPoints)
+        .data(visibleCategoryData, ({ point }) => coordKey(point))
         .join("text")
         .attr("class", "category-label")
-        .attr("x", (point) => labelPlacement(point, point.name, CATEGORY_LABEL_SIZE).x)
-        .attr("y", (point) => labelPlacement(point, point.name, CATEGORY_LABEL_SIZE).y)
-        .attr("text-anchor", (point) => labelPlacement(point, point.name, CATEGORY_LABEL_SIZE).anchor)
-        .style("font-size", (point) => `${labelPlacement(point, point.name, CATEGORY_LABEL_SIZE).size}px`)
-        .style("stroke-width", (point) => {
-          const placed = labelPlacement(point, point.name, CATEGORY_LABEL_SIZE);
-          return `${Math.max(2, placed.size * 0.22)}px`;
-        })
-        .text((point) => point.name);
+        .attr("x", ({ placed }) => placed.x)
+        .attr("y", ({ placed }) => placed.y)
+        .attr("text-anchor", ({ placed }) => placed.anchor)
+        .style("font-size", ({ placed }) => `${placed.size}px`)
+        .style("stroke-width", ({ placed }) => `${Math.max(2, placed.size * 0.22)}px`)
+        .text(({ point }) => point.name);
+
+      return { labelBoxes, points: state.visibleCategoryPoints };
     }
 
     function pointInfo(index) {
@@ -1132,6 +1522,10 @@
       }
 
       const point = state.points[state.selectedIndex];
+      if (!isInGraphBounds(point) || !pointIsVisible(point)) {
+        return;
+      }
+
       const px = state.transform.applyX(xScale(point.x));
       const py = state.transform.applyY(yScale(point.y));
       const selectedGroup = selectedLayer.append("g").attr("class", "selected");
@@ -1177,25 +1571,16 @@
     function drawAll() {
       drawGrid();
       drawVoronoi();
-      drawCategoryPoints();
-      drawPoints();
-      drawCategoryLabels();
-      drawLabels();
-      drawSelected();
       applyTransform();
     }
 
     function applyTransform() {
       root.attr("transform", state.transform);
-      const inverseScale = 1 / state.transform.k;
-      root.selectAll(".point")
-        .attr("r", POINT_RADIUS * inverseScale)
-        .attr("stroke-width", 0.75 * inverseScale);
-      root.selectAll(".category-point")
-        .attr("r", POINT_RADIUS * 1.7 * inverseScale)
-        .attr("stroke-width", inverseScale);
-      drawCategoryLabels();
-      drawLabels();
+      const visibleIdeologyPoints = visibleIdeologyPointsByPriority();
+      const categoryLabels = drawCategoryLabels();
+      drawCategoryPoints(categoryLabels.points);
+      const visibleLabelIndices = drawLabels(visibleIdeologyPoints, categoryLabels.labelBoxes);
+      drawPoints(visibleLabelIndices);
       drawSelected();
     }
 
@@ -1265,14 +1650,26 @@
       drawAll();
     }
 
+    function applyBoundsMode(showExtremes) {
+      state.showExtremes = showExtremes;
+      state.selectedIndex = null;
+      state.matches = [];
+      state.transform = d3.zoomIdentity;
+      elements.search.value = "";
+      updateViewBounds();
+      updateStatus();
+      renderMatches();
+      elements.svg.call(zoom.transform, d3.zoomIdentity);
+      drawAll();
+    }
+
     function updateSearch() {
       const query = elements.search.value.trim().toLowerCase();
       if (!query) {
         state.matches = [];
         if (state.selectedIndex !== null) {
           state.selectedIndex = null;
-          drawLabels();
-          drawSelected();
+          drawAll();
           renderMatches();
         } else {
           renderMatches();
@@ -1315,8 +1712,7 @@
       }
 
       state.selectedIndex = index;
-      drawLabels();
-      drawSelected();
+      drawAll();
       renderMatches();
 
       if (focus) {
@@ -1328,8 +1724,7 @@
       elements.search.value = "";
       state.matches = [];
       state.selectedIndex = null;
-      drawLabels();
-      drawSelected();
+      drawAll();
       renderMatches();
       elements.search.focus();
     }
@@ -1341,6 +1736,9 @@
     elements.search.addEventListener("input", updateSearch);
     elements.detailSlider.addEventListener("input", (event) => {
       switchDataset(Number(event.target.value) - 1);
+    });
+    elements.showExtremes.addEventListener("change", (event) => {
+      applyBoundsMode(event.target.checked);
     });
 
     elements.search.addEventListener("keydown", (event) => {
@@ -1362,9 +1760,7 @@
     });
 
     window.addEventListener("resize", () => {
-      drawCategoryLabels();
-      drawLabels();
-      drawSelected();
+      drawAll();
     });
 
     elements.clear.addEventListener("click", clearSelection);
@@ -1372,8 +1768,7 @@
     elements.svg.on("click", () => {
       if (state.selectedIndex !== null) {
         state.selectedIndex = null;
-        drawLabels();
-        drawSelected();
+        drawAll();
         renderMatches();
       }
     });
@@ -1404,7 +1799,9 @@
     })))
       .then((datasets) => {
         state.datasets = datasets;
-        applyDataset(0);
+        state.ideologyNameFrequency = buildNameFrequency(datasets.map((dataset) => dataset.points));
+        state.categoryNameFrequency = buildNameFrequency(datasets.map((dataset) => dataset.categoryPoints));
+        applyDataset(datasets.length - 1);
         renderDetailSlider();
         updateStatus();
         renderMatches();

@@ -88,15 +88,20 @@ SEARCH_FOCUS_SPAN = 6.0
 MAX_SEARCH_RESULTS = 15
 CLICK_DISTANCE_PIXELS = 16
 PAN_CLICK_TOLERANCE_PIXELS = 5
+SCROLL_ZOOM_IN_SCALE = 0.90
+SCROLL_ZOOM_OUT_SCALE = 1.0 / SCROLL_ZOOM_IN_SCALE
 LABEL_EDGE_MARGIN_PIXELS = 2.0
-LABEL_PADDING_PIXELS = 1.0
+LABEL_PADDING_PIXELS = 0.5
 LABEL_OFFSET_PIXELS = 4.0
 CATEGORY_LABEL_OFFSET_PIXELS = 5.0
-LABEL_ZOOMED_OUT_FRACTION = 0.24
-LABEL_ZOOM_CURVE = 1.25
-LABEL_MIN_VISIBLE = 18
-LABEL_WIDTH_FACTOR = 0.50
-LABEL_HEIGHT_FACTOR = 1.08
+LABEL_ZOOMED_OUT_FRACTION = 0.32
+LABEL_ZOOM_CURVE = 1.15
+LABEL_MIN_VISIBLE = 28
+LABEL_WIDTH_FACTOR = 0.46
+LABEL_HEIGHT_FACTOR = 1.00
+LABEL_PRIORITY_FRACTION = 0.45
+LABEL_OPEN_SPACE_MIN_PIXELS = 48.0
+MANDATORY_LABEL_VORONOI_AREA = 4.0
 
 
 # -----------------------------------------------------------------------------
@@ -389,6 +394,18 @@ def _largest_polygon(geometry: object) -> Optional[Polygon]:
         return max(polygons, key=lambda poly: poly.area) if polygons else None
 
     return None
+
+
+def polygon_area(coords: Sequence[Tuple[float, float]]) -> float:
+    """Return polygon area in data-square units."""
+    if len(coords) < 3:
+        return 0.0
+
+    area = 0.0
+    for index, (x1, y1) in enumerate(coords):
+        x2, y2 = coords[(index + 1) % len(coords)]
+        area += x1 * y2 - x2 * y1
+    return abs(area) / 2.0
 
 
 def build_clipped_voronoi_cells(
@@ -1116,6 +1133,65 @@ class NewPoliticalCompassApp:
         frequency = self.category_name_frequency.get(self._normalize_label_key(point.name), 0)
         return -frequency, point.row_number, point.name.lower()
 
+    def _category_voronoi_area_by_key(self) -> Dict[Tuple[float, float], float]:
+        areas: Dict[Tuple[float, float], float] = {}
+
+        for cell, point_index in zip(
+            self.category_voronoi_cells, self.category_unique_coord_to_point_index
+        ):
+            if not cell:
+                continue
+
+            point = self.category_points[point_index]
+            areas[self._point_coord_key(point)] = polygon_area(cell)
+
+        return areas
+
+    def _category_label_priority_key(
+        self,
+        point: CompassPoint,
+        area_by_key: Dict[Tuple[float, float], float],
+    ) -> Tuple[int, float, int, int, str]:
+        area = area_by_key.get(self._point_coord_key(point), 0.0)
+        mandatory_rank = 0 if area > MANDATORY_LABEL_VORONOI_AREA else 1
+        frequency, row_number, name = self._category_label_sort_key(point)
+        return mandatory_rank, -area if mandatory_rank == 0 else 0.0, frequency, row_number, name
+
+    def _mandatory_voronoi_label_indices(self) -> Dict[int, float]:
+        label_indices: Dict[int, float] = {}
+
+        for cell, point_index in zip(self.voronoi_cells, self.unique_coord_to_point_index):
+            if not cell:
+                continue
+
+            point = self.points[point_index]
+            area = polygon_area(cell)
+            if (
+                area > MANDATORY_LABEL_VORONOI_AREA
+                and self._point_is_visible(point)
+                and self._point_coord_key(point) not in self.category_coord_keys
+            ):
+                label_indices[point_index] = area
+
+        return label_indices
+
+    def _point_screen_openness(
+        self,
+        point: CompassPoint,
+        neighbor_points: Sequence[CompassPoint],
+    ) -> float:
+        point_x, point_y = self.ax.transData.transform((point.x, point.y))
+        nearest_distance = math.inf
+
+        for neighbor in neighbor_points:
+            if neighbor is point:
+                continue
+            neighbor_x, neighbor_y = self.ax.transData.transform((neighbor.x, neighbor.y))
+            distance = math.hypot(point_x - neighbor_x, point_y - neighbor_y)
+            nearest_distance = min(nearest_distance, distance)
+
+        return nearest_distance
+
     def _clamp_label_box(self, box: LabelBox, width: float, height: float) -> LabelBox:
         axes_left = float(self.ax.bbox.x0) + LABEL_EDGE_MARGIN_PIXELS
         axes_right = float(self.ax.bbox.x1) - LABEL_EDGE_MARGIN_PIXELS
@@ -1164,17 +1240,22 @@ class NewPoliticalCompassApp:
         orientations = [
             (horizontal_order[0], vertical_order[0]),
             (horizontal_order[1], vertical_order[0]),
+            ("center", vertical_order[0]),
             (horizontal_order[0], vertical_order[1]),
             (horizontal_order[1], vertical_order[1]),
+            ("center", vertical_order[1]),
         ]
 
         for ha, va in orientations:
             if ha == "left":
                 left = point_x + offset_pixels
                 right = left + label_width
-            else:
+            elif ha == "right":
                 right = point_x - offset_pixels
                 left = right - label_width
+            else:
+                left = point_x - label_width / 2
+                right = point_x + label_width / 2
 
             if va == "bottom":
                 bottom = point_y + offset_pixels
@@ -1191,7 +1272,12 @@ class NewPoliticalCompassApp:
             if any(self._label_boxes_overlap(box, occupied) for occupied in occupied_boxes):
                 continue
 
-            anchor_x = box.left if ha == "left" else box.right
+            if ha == "left":
+                anchor_x = box.left
+            elif ha == "right":
+                anchor_x = box.right
+            else:
+                anchor_x = (box.left + box.right) / 2
             anchor_y = box.bottom if va == "bottom" else box.top
             data_x, data_y = self.ax.transData.inverted().transform((anchor_x, anchor_y))
             return LabelPlacement(
@@ -1212,12 +1298,16 @@ class NewPoliticalCompassApp:
     ) -> set[int]:
         label_boxes = list(occupied_boxes)
         label_limit = self._label_limit(len(visible_points))
-        drawn_count = 0
         drawn_indices: set[int] = set()
+        mandatory_label_areas = self._mandatory_voronoi_label_indices()
+        neighbor_points = [
+            *[point for _, point in visible_points],
+            *[point for point in self.category_points if self._point_is_visible(point)],
+        ]
 
-        for index, point in visible_points:
-            if drawn_count >= label_limit:
-                break
+        def try_draw_label(index: int, point: CompassPoint, respect_limit: bool = True) -> bool:
+            if (respect_limit and len(drawn_indices) >= label_limit) or index in drawn_indices:
+                return False
 
             is_selected = index == self.selected_index
             fontsize = 9.5 if is_selected else 8.5
@@ -1225,7 +1315,7 @@ class NewPoliticalCompassApp:
                 point, point.name, fontsize, LABEL_OFFSET_PIXELS, label_boxes
             )
             if placement is None:
-                continue
+                return False
 
             self.ax.text(
                 placement.x,
@@ -1242,15 +1332,62 @@ class NewPoliticalCompassApp:
             )
             label_boxes.append(placement.box)
             drawn_indices.add(index)
-            drawn_count += 1
+            return True
+
+        mandatory_points = [
+            (mandatory_label_areas[index], index, point)
+            for index, point in visible_points
+            if index in mandatory_label_areas
+        ]
+        mandatory_points.sort(
+            key=lambda item: (-item[0], self._ideology_label_sort_key(item[1], item[2]))
+        )
+
+        for _area, index, point in mandatory_points:
+            try_draw_label(index, point, respect_limit=False)
+
+        priority_target = min(label_limit, max(1, int(math.ceil(label_limit * LABEL_PRIORITY_FRACTION))))
+        for index, point in visible_points:
+            if len(drawn_indices) >= priority_target:
+                break
+            try_draw_label(index, point)
+
+        open_space_points = [
+            (
+                self._point_screen_openness(point, neighbor_points),
+                index,
+                point,
+            )
+            for index, point in visible_points
+            if index not in drawn_indices
+        ]
+        open_space_points = [
+            item for item in open_space_points if item[0] >= LABEL_OPEN_SPACE_MIN_PIXELS
+        ]
+        open_space_points.sort(
+            key=lambda item: (-item[0], self._ideology_label_sort_key(item[1], item[2]))
+        )
+
+        for _openness, index, point in open_space_points:
+            if len(drawn_indices) >= label_limit:
+                break
+            try_draw_label(index, point)
+
+        for index, point in visible_points:
+            if len(drawn_indices) >= label_limit:
+                break
+            try_draw_label(index, point)
 
         return drawn_indices
 
     def _draw_category_labels(self) -> Tuple[List[LabelBox], List[CompassPoint]]:
         label_boxes: List[LabelBox] = []
         labeled_points: List[CompassPoint] = []
+        category_area_by_key = self._category_voronoi_area_by_key()
         visible_points = [point for point in self.category_points if self._point_is_visible(point)]
-        visible_points.sort(key=self._category_label_sort_key)
+        visible_points.sort(
+            key=lambda point: self._category_label_priority_key(point, category_area_by_key)
+        )
 
         for point in visible_points:
             placement = self._label_placement(
@@ -1466,9 +1603,9 @@ class NewPoliticalCompassApp:
 
         step = getattr(event, "step", 0)
         if step > 0 or getattr(event, "button", None) == "up":
-            scale = 0.82
+            scale = SCROLL_ZOOM_IN_SCALE
         else:
-            scale = 1.18
+            scale = SCROLL_ZOOM_OUT_SCALE
 
         new_width = float(np.clip(current_width * scale, MIN_VIEW_SPAN, self.view_max_x - self.view_min_x))
         new_height = float(np.clip(current_height * scale, MIN_VIEW_SPAN, self.view_max_y - self.view_min_y))

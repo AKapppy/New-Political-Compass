@@ -8,6 +8,8 @@ __pycache__/
 venv/
 env/
 
+notes.txt
+
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
