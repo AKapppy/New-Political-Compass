@@ -10,10 +10,10 @@ Run:
 
 Edit the CSV_PATH or CSV_CATS values below if a CSV moves.
 Expected CSV columns for all point/category files:
-    name,x,y,group
+    name,x,y,group,hex
 
 Required: name, x, y
-Optional: group
+Optional: group, hex
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ SEARCH_FOCUS_SPAN = 6.0
 MAX_SEARCH_RESULTS = 15
 CLICK_DISTANCE_PIXELS = 16
 PAN_CLICK_TOLERANCE_PIXELS = 5
-SCROLL_ZOOM_IN_SCALE = 0.90
+SCROLL_ZOOM_IN_SCALE = 0.96
 SCROLL_ZOOM_OUT_SCALE = 1.0 / SCROLL_ZOOM_IN_SCALE
 LABEL_EDGE_MARGIN_PIXELS = 2.0
 LABEL_PADDING_PIXELS = 0.5
@@ -128,8 +128,11 @@ CATEGORY_EDGE = "#39c462"
 CATEGORY_FILL = "#27c35a"
 CATEGORY_FILL_ALPHA = 0.035
 CATEGORY_EDGE_ALPHA = 0.64
+CATEGORY_COLORFUL_FILL_ALPHA = 0.3
+CATEGORY_COLORFUL_EDGE = "#f2f2f2"
 CATEGORY_POINT = "#9ff6b4"
 CATEGORY_TEXT = "#8fdca3"
+CATEGORY_DARK_TEXT = "#d8d8d8"
 TOOLTIP_BACKGROUND = "#222222"
 TOOLTIP_EDGE = "#eeeeee"
 
@@ -142,6 +145,7 @@ class CompassPoint:
     x: float
     y: float
     group: Optional[str]
+    hex_color: Optional[str]
     row_number: int
 
 
@@ -219,6 +223,18 @@ def _parse_csv_float(value: object) -> float:
     return float(str(value).strip())
 
 
+def _parse_hex_color(value: object) -> str:
+    color = str(value).strip()
+    hex_digits = "0123456789abcdefABCDEF"
+    if (
+        color.startswith("#")
+        and len(color) in (4, 7)
+        and all(char in hex_digits for char in color[1:])
+    ):
+        return color.upper()
+    raise ValueError(f"{color!r} is not a valid #RGB or #RRGGBB color.")
+
+
 def is_in_graph_bounds(x: float, y: float) -> bool:
     return WORLD_MIN <= x <= WORLD_MAX and WORLD_MIN <= y <= WORLD_MAX
 
@@ -290,7 +306,23 @@ def load_points(csv_path: str) -> Tuple[List[CompassPoint], List[str]]:
         if "group" in df.columns and not _is_blank(row.get("group")):
             group = str(row.get("group")).strip()
 
-        points.append(CompassPoint(name=name, x=x, y=y, group=group, row_number=row_number))
+        hex_color: Optional[str] = None
+        if "hex" in df.columns and not _is_blank(row.get("hex")):
+            try:
+                hex_color = _parse_hex_color(row.get("hex"))
+            except ValueError as exc:
+                warnings.append(f"Row {row_number}: ignored invalid hex color: {exc}")
+
+        points.append(
+            CompassPoint(
+                name=name,
+                x=x,
+                y=y,
+                group=group,
+                hex_color=hex_color,
+                row_number=row_number,
+            )
+        )
 
     if not points:
         raise DataLoadError("No valid finite points were found in the CSV.")
@@ -529,6 +561,7 @@ class NewPoliticalCompassApp:
         self.status_var = tk.StringVar()
         self.detail_var = tk.IntVar(value=len(self.datasets))
         self.show_extremes_var = tk.BooleanVar(value=False)
+        self.colorful_categories_var = tk.BooleanVar(value=False)
 
         self._apply_dataset(self.active_dataset_index)
         self._build_ui()
@@ -778,6 +811,22 @@ class NewPoliticalCompassApp:
         )
         extremes_toggle.pack(side=tk.LEFT, padx=(0, 14))
 
+        colorful_toggle = tk.Checkbutton(
+            top_frame,
+            text="Colorful",
+            variable=self.colorful_categories_var,
+            command=self._on_colorful_categories_toggled,
+            bg=PANEL_BACKGROUND,
+            fg=TEXT_COLOR,
+            activebackground=PANEL_BACKGROUND,
+            activeforeground=TEXT_COLOR,
+            selectcolor="#252525",
+            relief=tk.FLAT,
+            highlightthickness=0,
+            font=("Helvetica Neue", 11),
+        )
+        colorful_toggle.pack(side=tk.LEFT, padx=(0, 14))
+
         search_label = tk.Label(
             top_frame,
             text="Search point:",
@@ -892,12 +941,16 @@ class NewPoliticalCompassApp:
         if dataset_index == self.active_dataset_index:
             return
 
+        current_xlim = self.ax.get_xlim()
+        current_ylim = self.ax.get_ylim()
         self._apply_dataset(dataset_index)
+        self.ax.set_xlim(*self._clamp_x_limits(float(current_xlim[0]), float(current_xlim[1])))
+        self.ax.set_ylim(*self._clamp_y_limits(float(current_ylim[0]), float(current_ylim[1])))
         self.search_var.set("")
         self.results_listbox.delete(0, tk.END)
         self._update_status()
         self._update_detail_slider()
-        self.draw_plot()
+        self.draw_plot(keep_view=True)
         self._notify_active_dataset_warnings()
 
     def _update_detail_slider(self) -> None:
@@ -910,6 +963,9 @@ class NewPoliticalCompassApp:
         self._update_status()
         self.draw_plot()
         self._notify_active_dataset_warnings()
+
+    def _on_colorful_categories_toggled(self) -> None:
+        self.draw_plot(keep_view=True)
 
     def _connect_events(self) -> None:
         self.canvas.mpl_connect("scroll_event", self._handle_scroll_event)
@@ -999,15 +1055,18 @@ class NewPoliticalCompassApp:
             VORONOI_EDGE_ALPHA,
             1.8,
         )
-        self._draw_cell_patches(
-            self.category_voronoi_cells,
-            CATEGORY_FILL,
-            CATEGORY_EDGE,
-            1.0,
-            CATEGORY_FILL_ALPHA,
-            CATEGORY_EDGE_ALPHA,
-            2.1,
-        )
+        if self.colorful_categories_var.get():
+            self._draw_category_cell_patches()
+        else:
+            self._draw_cell_patches(
+                self.category_voronoi_cells,
+                CATEGORY_FILL,
+                CATEGORY_EDGE,
+                1.0,
+                CATEGORY_FILL_ALPHA,
+                CATEGORY_EDGE_ALPHA,
+                2.1,
+            )
 
         boundary = MplPolygon(
             [
@@ -1049,6 +1108,41 @@ class NewPoliticalCompassApp:
             )
             self.ax.add_patch(patch)
 
+    def _draw_category_cell_patches(self) -> None:
+        for cell, point_index in zip(
+            self.category_voronoi_cells, self.category_unique_coord_to_point_index
+        ):
+            if not cell:
+                continue
+
+            point = self.category_points[point_index]
+            patch = MplPolygon(
+                cell,
+                closed=True,
+                facecolor=to_rgba(self._category_color(point), CATEGORY_COLORFUL_FILL_ALPHA),
+                edgecolor=to_rgba(CATEGORY_COLORFUL_EDGE, 0.92),
+                linewidth=1.0,
+                zorder=2.1,
+            )
+            self.ax.add_patch(patch)
+
+    def _category_color(self, point: CompassPoint) -> str:
+        return point.hex_color or CATEGORY_FILL
+
+    def _color_is_dark(self, color: str) -> bool:
+        red, green, blue, _alpha = to_rgba(color)
+        luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+        return luminance < 0.24
+
+    def _category_text_color(self, point: CompassPoint) -> str:
+        if not self.colorful_categories_var.get():
+            return CATEGORY_TEXT
+
+        color = self._category_color(point)
+        if self._color_is_dark(color):
+            return CATEGORY_DARK_TEXT
+        return color
+
     def _visible_ideology_points_by_priority(self) -> List[Tuple[int, CompassPoint]]:
         visible_points = [
             (index, point)
@@ -1085,12 +1179,17 @@ class NewPoliticalCompassApp:
 
         x_values = [point.x for point in points]
         y_values = [point.y for point in points]
+        face_colors: object = CATEGORY_POINT
+        edge_colors: object = "#06230d"
+        if self.colorful_categories_var.get():
+            face_colors = [self._category_color(point) for point in points]
+            edge_colors = CATEGORY_COLORFUL_EDGE
         self.ax.scatter(
             x_values,
             y_values,
             s=58,
-            c=CATEGORY_POINT,
-            edgecolors="#06230d",
+            c=face_colors,
+            edgecolors=edge_colors,
             linewidths=1.0,
             zorder=4.4,
         )
@@ -1400,7 +1499,7 @@ class NewPoliticalCompassApp:
                 placement.x,
                 placement.y,
                 point.name,
-                color=CATEGORY_TEXT,
+                color=self._category_text_color(point),
                 fontsize=placement.fontsize,
                 fontweight="bold",
                 alpha=0.98,
@@ -1745,12 +1844,11 @@ class NewPoliticalCompassApp:
 
     def _update_status(self) -> None:
         dataset_label = self.datasets[self.active_dataset_index].label
-        group_count = sum(1 for point in self.points if point.group)
         skipped_count = len(self.warnings) + len(self.category_warnings)
         warning_text = f" | {skipped_count} skipped row(s)" if skipped_count else ""
         self.status_var.set(
-            f"{dataset_label} | {len(self.points)} ideology point(s) | {len(self.category_points)} category point(s) | "
-            f"{group_count} with group values{warning_text}"
+            f"{dataset_label} | {len(self.points)} ideologies | "
+            f"{len(self.category_points)} categories{warning_text}"
         )
 
 

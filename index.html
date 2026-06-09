@@ -27,6 +27,7 @@
       --category-fill: #27c35a;
       --category-point: #9ff6b4;
       --category-text: #8fdca3;
+      --category-dark-text: #d8d8d8;
       --tooltip: #222222;
       --tooltip-edge: #eeeeee;
       --focus: #7dd3fc;
@@ -63,7 +64,7 @@
 
     .topbar {
       display: grid;
-      grid-template-columns: auto auto auto auto minmax(220px, 420px) auto 1fr;
+      grid-template-columns: auto auto auto auto auto minmax(180px, 1fr) auto;
       align-items: center;
       gap: 10px;
       padding: 8px 10px;
@@ -71,8 +72,16 @@
       border-bottom: 1px solid #252525;
     }
 
+    .brand-row {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      min-width: 0;
+      white-space: nowrap;
+    }
+
     .title {
-      margin: 0 8px 0 0;
+      margin: 0;
       font-size: 16px;
       font-weight: 700;
       white-space: nowrap;
@@ -446,8 +455,13 @@
         padding: 9px 10px;
       }
 
-      .title {
+      .brand-row {
         grid-column: 1 / -1;
+        flex-wrap: wrap;
+        row-gap: 3px;
+      }
+
+      .title {
         margin: 0;
         font-size: 16px;
       }
@@ -461,7 +475,6 @@
       }
 
       .status {
-        grid-column: 1 / -1;
         white-space: normal;
       }
 
@@ -522,7 +535,10 @@
 <body>
   <main class="app">
     <header class="topbar">
-      <h1 class="title">New Political Compass</h1>
+      <div class="brand-row">
+        <h1 class="title">New Political Compass</h1>
+        <div id="status" class="status">Loading data...</div>
+      </div>
       <div class="detail-control" aria-label="Detail level">
         <span>Least detailed</span>
         <div class="detail-slider-wrap"> 
@@ -532,13 +548,13 @@
         <span>Most detailed</span>
       </div>
       <label class="toggle"><input id="show-extremes" type="checkbox">Show extremes</label>
+      <label class="toggle"><input id="colorful-categories" type="checkbox">Colorful</label>
       <label class="search-label" for="search">Search point:</label>
       <input id="search" class="search-input" type="search" autocomplete="off" placeholder="Search point">
       <div class="button-row">
         <button id="clear" class="button" type="button">Clear</button>
         <button id="reset" class="button" type="button">Reset view</button>
       </div>
-      <div id="status" class="status">Loading data...</div>
     </header>
 
     <section class="body">
@@ -640,6 +656,9 @@
     const LABEL_PRIORITY_FRACTION = 0.45;
     const LABEL_OPEN_SPACE_MIN_PIXELS = 48;
     const MANDATORY_LABEL_VORONOI_AREA = 4;
+    const CATEGORY_COLORFUL_FILL_ALPHA = 0.3;
+    const CATEGORY_COLORFUL_EDGE = "#f2f2f2";
+    const CATEGORY_FALLBACK_COLOR = "#27c35a";
 
     const state = {
       datasets: [],
@@ -660,6 +679,7 @@
       visibleIdeologyLabelIndices: new Set(),
       visibleCategoryPoints: [],
       showExtremes: false,
+      colorfulCategories: false,
       viewBounds: {
         minX: COMPASS_MIN,
         maxX: COMPASS_MAX,
@@ -671,6 +691,7 @@
     const elements = {
       detailSlider: document.getElementById("detail-slider"),
       showExtremes: document.getElementById("show-extremes"),
+      colorfulCategories: document.getElementById("colorful-categories"),
       search: document.getElementById("search"),
       clear: document.getElementById("clear"),
       reset: document.getElementById("reset"),
@@ -757,6 +778,11 @@
       return rows;
     }
 
+    function normalizeHexColor(value) {
+      const color = value.trim();
+      return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color) ? color.toUpperCase() : null;
+    }
+
     function parsePoints(text) {
       const rows = csvRows(text).filter((row) => row.some((value) => value.trim() !== ""));
       if (!rows.length) {
@@ -768,6 +794,7 @@
       const xColumn = headers.indexOf("x");
       const yColumn = headers.indexOf("y");
       const groupColumn = headers.indexOf("group");
+      const hexColumn = headers.indexOf("hex");
 
       if (nameColumn === -1 || xColumn === -1 || yColumn === -1) {
         throw new Error("The CSV is missing required column(s). Expected at least: name,x,y");
@@ -791,11 +818,17 @@
 
         const rawName = (row[nameColumn] || "").trim();
         const rawGroup = groupColumn >= 0 ? (row[groupColumn] || "").trim() : "";
+        const rawHex = hexColumn >= 0 ? (row[hexColumn] || "").trim() : "";
+        const hexColor = rawHex ? normalizeHexColor(rawHex) : null;
+        if (rawHex && !hexColor) {
+          warnings.push(`Row ${rowNumber}: ignored invalid hex color ${rawHex}.`);
+        }
         points.push({
           name: rawName || `Point ${fallbackCounter++}`,
           x,
           y,
           group: rawGroup || null,
+          hexColor,
           rowNumber
         });
       });
@@ -813,6 +846,25 @@
 
     function clamp(value, min, max) {
       return Math.min(max, Math.max(min, value));
+    }
+
+    function categoryColor(point) {
+      return point.hexColor || CATEGORY_FALLBACK_COLOR;
+    }
+
+    function colorIsDark(color) {
+      const hex = color.length === 4
+        ? `#${color[1]}${color[1]}${color[2]}${color[2]}${color[3]}${color[3]}`
+        : color;
+      const red = Number.parseInt(hex.slice(1, 3), 16) / 255;
+      const green = Number.parseInt(hex.slice(3, 5), 16) / 255;
+      const blue = Number.parseInt(hex.slice(5, 7), 16) / 255;
+      return 0.2126 * red + 0.7152 * green + 0.0722 * blue < 0.24;
+    }
+
+    function categoryTextColor(point) {
+      const color = categoryColor(point);
+      return colorIsDark(color) ? "var(--category-dark-text)" : color;
     }
 
     function currentGraphBounds() {
@@ -1110,10 +1162,9 @@
     function updateStatus() {
       const dataset = state.datasets[state.activeDatasetIndex];
       const datasetLabel = dataset ? dataset.label : "Dataset";
-      const groupCount = state.points.filter((point) => point.group).length;
       const skippedCount = state.warnings.length + state.categoryWarnings.length;
       const warningText = skippedCount ? ` | ${skippedCount} skipped row(s)` : "";
-      elements.status.textContent = `${datasetLabel} | ${state.points.length} ideology point(s) | ${state.categoryPoints.length} category point(s) | ${groupCount} with group values${warningText}`;
+      elements.status.textContent = `${datasetLabel} | ${state.points.length} ideologies | ${state.categoryPoints.length} categories${warningText}`;
     }
 
     function drawGrid() {
@@ -1255,7 +1306,7 @@
       return unique;
     }
 
-    function drawVoronoiCells(layer, points, className, areaMap) {
+    function drawVoronoiCells(layer, points, className, areaMap, colorful = false) {
       layer.selectAll("*").remove();
       areaMap.clear();
       const unique = uniquePoints(points.filter(isInGraphBounds));
@@ -1280,12 +1331,22 @@
         .data(unique)
         .join("path")
         .attr("class", className)
-        .attr("d", (_point, index) => voronoi.renderCell(index));
+        .attr("d", (_point, index) => voronoi.renderCell(index))
+        .style("fill", (point) => colorful && state.colorfulCategories ? categoryColor(point) : null)
+        .style("fill-opacity", colorful && state.colorfulCategories ? CATEGORY_COLORFUL_FILL_ALPHA : null)
+        .style("stroke", colorful && state.colorfulCategories ? CATEGORY_COLORFUL_EDGE : null)
+        .style("stroke-opacity", colorful && state.colorfulCategories ? 0.92 : null);
     }
 
     function drawVoronoi() {
       drawVoronoiCells(cellLayer, state.points, "cell", state.voronoiAreas);
-      drawVoronoiCells(categoryCellLayer, state.categoryPoints, "cell category-cell", state.categoryVoronoiAreas);
+      drawVoronoiCells(
+        categoryCellLayer,
+        state.categoryPoints,
+        "cell category-cell",
+        state.categoryVoronoiAreas,
+        true
+      );
     }
 
     function drawPoints(pointIndices) {
@@ -1326,7 +1387,9 @@
         .attr("r", POINT_RADIUS * 1.7 * inverseScale)
         .attr("stroke-width", inverseScale)
         .attr("cx", (point) => xScale(point.x))
-        .attr("cy", (point) => yScale(point.y));
+        .attr("cy", (point) => yScale(point.y))
+        .style("fill", (point) => state.colorfulCategories ? categoryColor(point) : null)
+        .style("stroke", state.colorfulCategories ? CATEGORY_COLORFUL_EDGE : null);
     }
 
     function drawLabels(visiblePoints, occupiedBoxes) {
@@ -1437,6 +1500,7 @@
         .attr("text-anchor", ({ placed }) => placed.anchor)
         .style("font-size", ({ placed }) => `${placed.size}px`)
         .style("stroke-width", ({ placed }) => `${Math.max(2, placed.size * 0.22)}px`)
+        .style("fill", ({ point }) => state.colorfulCategories ? categoryTextColor(point) : null)
         .text(({ point }) => point.name);
 
       return state.visibleIdeologyLabelIndices;
@@ -1631,7 +1695,6 @@
       state.categoryWarnings = dataset.categoryWarnings;
       state.selectedIndex = null;
       state.matches = [];
-      state.transform = d3.zoomIdentity;
       updateViewBounds();
       buildCoordIndex();
     }
@@ -1641,12 +1704,14 @@
         return;
       }
 
+      const currentTransform = clampTranslate(d3.zoomTransform(elements.svg.node()));
       applyDataset(index);
+      state.transform = currentTransform;
       elements.search.value = "";
       renderDetailSlider();
       updateStatus();
       renderMatches();
-      elements.svg.call(zoom.transform, d3.zoomIdentity);
+      elements.svg.call(zoom.transform, currentTransform);
       drawAll();
     }
 
@@ -1739,6 +1804,10 @@
     });
     elements.showExtremes.addEventListener("change", (event) => {
       applyBoundsMode(event.target.checked);
+    });
+    elements.colorfulCategories.addEventListener("change", (event) => {
+      state.colorfulCategories = event.target.checked;
+      drawAll();
     });
 
     elements.search.addEventListener("keydown", (event) => {
