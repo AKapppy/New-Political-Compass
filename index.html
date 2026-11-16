@@ -530,50 +530,186 @@
         min-height: 250px;
       }
     }
+
+    /* Sleek layout: the plot receives all available space until Details is opened. */
+    :root {
+      --background: #101518;
+      --panel: #182024;
+      --panel-strong: #202c30;
+      --input: #223034;
+      --grid-major: #314044;
+      --grid-minor: #202c30;
+      --voronoi-edge: #9be7ff;
+      --category-edge: #39c462;
+    }
+    body { overflow: hidden; }
+    .app { height: 100dvh; min-height: 480px; overflow: hidden; }
+    .topbar {
+      display: flex; flex-direction: column; align-items: stretch;
+      gap: 7px; padding: 10px 15px 9px;
+      position: relative; z-index: 8;
+    }
+    .top-row, .search-row { display: flex; align-items: center; gap: 13px; min-width: 0; }
+    .top-row { min-height: 27px; }
+    .title { font-size: 15px; margin-right: 8px; }
+    .detail-control { font-size: 10px; gap: 7px; }
+    .detail-slider-wrap { width: 144px; flex: none; }
+    .detail-slider { accent-color: #7caab6; }
+    .toggle { font-size: 11px; }
+    .toggles { display: flex; align-items: center; gap: 17px; flex-wrap: wrap; }
+    .toggles input { accent-color: #2580e0; }
+    .control-button {
+      min-height: 27px; border: 1px solid #435157; border-radius: 5px;
+      background: #263238; color: #d6e8ea; padding: 4px 10px;
+      cursor: pointer; font-size: 11px; white-space: nowrap;
+    }
+    .control-button:hover, .control-button[aria-pressed="true"] { background: #35525d; }
+    .control-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+    .details-toggle { margin-left: auto; }
+    .search-row { gap: 8px; }
+    .search-label { font-weight: 500; }
+    .search-wrap { position: relative; width: min(290px, 28vw); min-width: 135px; }
+    .search-input {
+      border-color: #415257; background: #223034; height: 32px;
+      padding: 5px 10px; font-size: 12px;
+    }
+    .button-row { gap: 7px; }
+    .button { min-height: 29px; padding: 4px 13px; font-size: 11px; font-weight: 600; }
+    .button.subtle { background: #29383c; color: #d4e3e5; }
+    .button.subtle:hover { background: #36535d; }
+    .status { margin-left: 9px; font-size: 11px; }
+    .search-feedback { font-size: 11px; color: #a8bfc4; margin: 0 0 0 4px; min-width: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .search-feedback.error { color: #ffb09e; }
+    .matches-popover {
+      position: absolute; top: calc(100% + 5px); left: 0;
+      width: min(440px, 87vw); max-height: min(345px, 54vh);
+      overflow: auto; border: 1px solid #536f77; border-radius: 7px;
+      background: #1d282c; box-shadow: 0 14px 30px rgba(0,0,0,.52);
+      z-index: 20;
+    }
+    .matches-popover[hidden] { display: none; }
+    .match { padding: 9px 11px; border-bottom-color: #35454a; }
+    .match:hover, .match.active { background: #37525c; color: #fff176; }
+    .match-name { font-size: 12px; }
+    .match-meta { font-size: 10px; }
+    .body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); }
+    .body.with-details { grid-template-columns: minmax(0, 1fr) 244px; }
+    .stage { min-height: 0; overflow: hidden; padding: 8px; }
+    .plot-shell {
+      min-height: 0; width: min(calc(100% - 4px), calc(100dvh - 126px));
+      max-width: 100%; max-height: 100%; aspect-ratio: 1;
+      border-radius: 2px; overflow: hidden;
+      box-shadow: 0 0 0 1px rgba(160,195,198,.18);
+    }
+    .side {
+      overflow-x: hidden; overflow-y: auto; padding: 16px 15px;
+      background: #151e22; border-left: 1px solid #334448;
+    }
+    .side[hidden] { display: none; }
+    .side-heading { font-size: 13px; letter-spacing: .02em; margin-bottom: 14px; }
+    .selected-center { font-size: 12px; font-weight: 600; margin-bottom: 5px; overflow-wrap: anywhere; }
+    .selected-coords { font-size: 11px; color: #acbdc2; margin-bottom: 18px; }
+    .band-row { display: grid; grid-template-columns: 9px 27px 1fr; gap: 8px; align-items: center; margin: 12px 0; }
+    .band-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .band-count { font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .band-copy { font-size: 11px; }
+    .band-rule { font-size: 10px; color: #9aaeb4; }
+    .side-note { font-size: 10px; line-height: 1.5; color: #a2b2b7; margin-top: 17px; }
+    .side .help { margin-top: 25px; font-size: 10px; line-height: 1.6; }
+    .cell { fill-opacity: .055; stroke-opacity: .42; }
+    .category-cell { stroke-opacity: .56; }
+    .ring-fill { stroke: none; fill-opacity: .17; pointer-events: none; }
+    .ring-outline { fill: none; stroke-width: 1.9; stroke-opacity: .95;
+      vector-effect: non-scaling-stroke; pointer-events: none; }
+    .ring-layer { pointer-events: none; }
+    .point-layer { pointer-events: none; }
+    .point-layer circle { pointer-events: all; }
+    .plot-shell svg { cursor: grab; }
+    .plot-shell svg:active { cursor: grabbing; }
+    .label-layer, .category-label-layer, .selected-layer { pointer-events: none; }
+    @media (max-width: 940px) {
+      .topbar { padding: 9px 10px; }
+      .top-row, .search-row { gap: 8px; flex-wrap: wrap; }
+      .top-row .details-toggle { margin-left: auto; }
+      .status { flex: 1 1 auto; }
+      .plot-shell { width: min(100%, calc(100dvh - 174px)); }
+    }
+    @media (max-width: 720px) {
+      body { overflow: auto; }
+      .app { min-height: 100dvh; height: auto; overflow: visible; }
+      .topbar { gap: 8px; }
+      .title { width: 100%; }
+      .top-row { row-gap: 9px; }
+      .detail-control { order: 2; }
+      .toggles { order: 3; gap: 11px; }
+      .details-toggle { order: 4; }
+      .search-wrap { flex: 1 1 190px; width: auto; }
+      .search-feedback { width: 100%; }
+      .search-label { display: none; }
+      .body, .body.with-details { display: flex; flex-direction: column; }
+      .stage { padding: 8px 8px 5px; }
+      .plot-shell { width: min(100%, 95vw); min-height: 0; }
+      .side { border-left: 0; border-top: 1px solid #334448; }
+      .help { display: block; }
+    }
+    @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
   </style>
 </head>
 <body>
   <main class="app">
     <header class="topbar">
-      <div class="brand-row">
+      <div class="top-row">
         <h1 class="title">New Political Compass</h1>
-        <div id="status" class="status">Loading data...</div>
-      </div>
-      <div class="detail-control" aria-label="Detail level">
-        <span>Least detailed</span>
-        <div class="detail-slider-wrap"> 
-          <input id="detail-slider" class="detail-slider" type="range" min="1" max="10" step="1" value="10" aria-label="Detail level">
-          <div class="detail-ticks" aria-hidden="true"><span>10</span><span>9</span><span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span></div>
+        <div class="detail-control" aria-label="Detail level">
+          <span>Detail</span>
+          <div class="detail-slider-wrap">
+            <input id="detail-slider" class="detail-slider" type="range" min="1" max="10" step="1" value="10" aria-label="Detail level">
+            <div class="detail-ticks" aria-hidden="true"><span>10</span><span>9</span><span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span></div>
+          </div>
         </div>
-        <span>Most detailed</span>
+        <div class="toggles">
+          <label class="toggle"><input id="show-extremes" type="checkbox"> Show extremes</label>
+          <label class="toggle"><input id="colorful-categories" type="checkbox"> Colorful</label>
+          <label class="toggle"><input id="show-overton" type="checkbox" checked> Overton-style rings</label>
+        </div>
+        <button class="control-button details-toggle" id="details-toggle" type="button" aria-pressed="false" aria-expanded="false" aria-controls="details-panel">Details <span id="details-arrow">▸</span></button>
       </div>
-      <label class="toggle"><input id="show-extremes" type="checkbox">Show extremes</label>
-      <label class="toggle"><input id="colorful-categories" type="checkbox">Colorful</label>
-      <label class="search-label" for="search">Search point:</label>
-      <input id="search" class="search-input" type="search" autocomplete="off" placeholder="Search point">
-      <div class="button-row">
-        <button id="clear" class="button" type="button">Clear</button>
-        <button id="reset" class="button" type="button">Reset view</button>
+      <div class="search-row">
+        <label class="search-label" for="search">Find ideology / x,y:</label>
+        <div class="search-wrap">
+          <input id="search" class="search-input" type="search" autocomplete="off" placeholder="Name or 3, -2" aria-controls="matches" aria-expanded="false">
+          <div id="matches" class="matches-popover" role="listbox" aria-label="Ideology matches" hidden></div>
+        </div>
+        <div class="button-row">
+          <button id="go" class="button" type="button">Go / Select</button>
+          <button id="clear" class="button subtle" type="button">Clear</button>
+          <button id="reset" class="button subtle" type="button" title="Fit the full compass, keeping your selected point">Reset view</button>
+        </div>
+        <div id="status" class="status" role="status" aria-live="polite">Loading data...</div>
+        <div id="search-feedback" class="search-feedback" role="status"></div>
       </div>
     </header>
 
-    <section class="body">
+    <section class="body" id="main-body">
       <div class="stage">
         <div class="plot-shell">
-          <svg id="plot" role="img" aria-label="New Political Compass interactive plot"></svg>
+          <svg id="plot" role="img" aria-label="Interactive political compass with selectable points and concentric ideological-proximity rings"></svg>
         </div>
       </div>
 
-      <aside class="side">
-        <h2 class="side-heading">Matches</h2>
-        <div id="matches" class="matches">
-          <div class="empty">Type to search by point name or group.</div>
-        </div>
-        <div class="help">Scroll: zoom<br>Drag: pan<br>Click point: info<br>Esc: clear</div>
+      <aside class="side" id="details-panel" hidden aria-label="Proximity details">
+        <h2 class="side-heading">PROXIMITY BANDS</h2>
+        <div id="center-name" class="selected-center">No point selected</div>
+        <div id="center-coords" class="selected-coords">Enter x,y or choose an ideology.</div>
+        <div id="bands"></div>
+        <p class="side-note">Counts show plotted ideologies in each distance band at this detail level—not political popularity or policy viability.</p>
+        <div class="help">Scroll: zoom · Drag: pan<br>Click point: select · Esc: clear<br>Reset view: fit the compass</div>
       </aside>
     </section>
   </main>
 
+  <script id="embedded-data" type="application/json">{"ideology_categories.csv":"name,x,y,hex\nAnarchism,0.262346,-8.42901,#111111\nAuthoritarianism,0.375,5.97917,#00FFFF\nCapitalism,7.07562,-0.333333,#D4AF37\nCommunitarianism,1,3,#F66003\nCommunism,-7.81944,4.61806,#B00020\nConservatism,5.23438,3.09201,#1F4E79\nCorporatism,2.75278,4.46944,#6B7280\nDemocracy,0.5,-4.5,#CB7F7F\nEnvironmentalism,-5.83333,-2.70833,#2E7D32\nFascism,3.7328,8.71429,#5A2A27\nLiberalism,2.4158,-0.432292,#FF00FF\nLibertarianism,4.09314,-4.9281,#F2C94C\nNationalism,2.54167,6.29167,#005249\nPopulism,4,-8,#FF8C00\nProgressivism,-1.39141,-1.03283,#8E44AD\nSocial Democracy,-3.26243,-0.961257,#E75480\nSocialism,-6.09936,2.91453,#E63946\nSyndicalism,-5.77083,-4.21065,#F72902\nTranshumanism,2.05556,-1.75,#7C7C7C\n","ideology_categories10.csv":"name,x,y,hex\nConservatism,5.23438,3.09201,#1F4E79\nFascism,3.7328,8.71429,#5A2A27\nLiberalism,2.4158,-0.432292,#FF00FF\nLibertarianism,4.09314,-4.9281,#F2C94C\nProgressivism,-1.39141,-1.03283,#8E44AD\nSocial Democracy,-3.26243,-0.961257,#E75480\nSocialism,-6.09936,2.91453,#E63946\nSyndicalism,-5.77083,-4.21065,#F72902\n","ideology_categories2.csv":"name,x,y,hex\nAnarchism,0.262346,-8.42901,#111111\nAuthoritarianism,0.375,5.97917,#00FFFF\nCapitalism,7.07562,-0.333333,#D4AF37\nCommunism,-7.81944,4.61806,#B00020\nConservatism,5.23438,3.09201,#1F4E79\nCorporatism,2.75278,4.46944,#6B7280\nDemocracy,0.5,-4.5,#CB7F7F\nEnvironmentalism,-5.83333,-2.70833,#2E7D32\nFascism,3.7328,8.71429,#5A2A27\nLiberalism,2.4158,-0.432292,#FF00FF\nLibertarianism,4.09314,-4.9281,#F2C94C\nNationalism,2.54167,6.29167,#005249\nProgressivism,-1.39141,-1.03283,#8E44AD\nSocial Democracy,-3.26243,-0.961257,#E75480\nSocialism,-6.09936,2.91453,#E63946\nSyndicalism,-5.77083,-4.21065,#F72902\nTranshumanism,2.05556,-1.75,#7C7C7C\n","ideology_categories3.csv":"name,x,y,hex\nAnarchism,0.262346,-8.42901,#111111\nAuthoritarianism,0.375,5.97917,#00FFFF\nCapitalism,7.07562,-0.333333,#D4AF37\nCommunism,-7.81944,4.61806,#B00020\nConservatism,5.23438,3.09201,#1F4E79\nCorporatism,2.75278,4.46944,#6B7280\nEnvironmentalism,-5.83333,-2.70833,#2E7D32\nFascism,3.7328,8.71429,#5A2A27\nLiberalism,2.4158,-0.432292,#FF00FF\nLibertarianism,4.09314,-4.9281,#F2C94C\nNationalism,2.54167,6.29167,#005249\nProgressivism,-1.39141,-1.03283,#8E44AD\nSocial Democracy,-3.26243,-0.961257,#E75480\nSocialism,-6.09936,2.91453,#E63946\nSyndicalism,-5.77083,-4.21065,#F72902\nTranshumanism,2.05556,-1.75,#7C7C7C\n","ideology_categories4.csv":"name,x,y,hex\nAnarchism,0.262346,-8.42901,#111111\nAuthoritarianism,0.375,5.97917,#00FFFF\nCapitalism,7.07562,-0.333333,#D4AF37\nCommunism,-7.81944,4.61806,#B00020\nConservatism,5.23438,3.09201,#1F4E79\nCorporatism,2.75278,4.46944,#6B7280\nFascism,3.7328,8.71429,#5A2A27\nLiberalism,2.4158,-0.432292,#FF00FF\nLibertarianism,4.09314,-4.9281,#F2C94C\nNationalism,2.54167,6.29167,#005249\nProgressivism,-1.39141,-1.03283,#8E44AD\nSocial Democracy,-3.26243,-0.961257,#E75480\nSocialism,-6.09936,2.91453,#E63946\nSyndicalism,-5.77083,-4.21065,#F72902\nTranshumanism,2.05556,-1.75,#7C7C7C\n","ideology_categories5.csv":"name,x,y,hex\nAnarchism,0.262346,-8.42901,#111111\nAuthoritarianism,0.375,5.97917,#00FFFF\nCapitalism,7.07562,-0.333333,#D4AF37\nCommunism,-7.81944,4.61806,#B00020\nConservatism,5.23438,3.09201,#1F4E79\nCorporatism,2.75278,4.46944,#6B7280\nFascism,3.7328,8.71429,#5A2A27\nLiberalism,2.4158,-0.432292,#FF00FF\nLibertarianism,4.09314,-4.9281,#F2C94C\nNationalism,2.54167,6.29167,#005249\nProgressivism,-1.39141,-1.03283,#8E44AD\nSocial Democracy,-3.26243,-0.961257,#E75480\nSocialism,-6.09936,2.91453,#E63946\nSyndicalism,-5.77083,-4.21065,#F72902\nTranshumanism,2.05556,-1.75,#7C7C7C\n","ideology_categories6.csv":"name,x,y,hex\nAnarchism,0.262346,-8.42901,#111111\nAuthoritarianism,0.375,5.97917,#00FFFF\nCapitalism,7.07562,-0.333333,#D4AF37\nCommunism,-7.81944,4.61806,#B00020\nConservatism,5.23438,3.09201,#1F4E79\nFascism,3.7328,8.71429,#5A2A27\nLiberalism,2.4158,-0.432292,#FF00FF\nLibertarianism,4.09314,-4.9281,#F2C94C\nNationalism,2.54167,6.29167,#005249\nProgressivism,-1.39141,-1.03283,#8E44AD\nSocial Democracy,-3.26243,-0.961257,#E75480\nSocialism,-6.09936,2.91453,#E63946\nSyndicalism,-5.77083,-4.21065,#F72902\n","ideology_categories7.csv":"name,x,y,hex\nAnarchism,0.262346,-8.42901,#111111\nAuthoritarianism,0.375,5.97917,#00FFFF\nCapitalism,7.07562,-0.333333,#D4AF37\nConservatism,5.23438,3.09201,#1F4E79\nFascism,3.7328,8.71429,#5A2A27\nLiberalism,2.4158,-0.432292,#FF00FF\nLibertarianism,4.09314,-4.9281,#F2C94C\nProgressivism,-1.39141,-1.03283,#8E44AD\nSocial Democracy,-3.26243,-0.961257,#E75480\nSocialism,-6.09936,2.91453,#E63946\nSyndicalism,-5.77083,-4.21065,#F72902","ideology_categories8.csv":"name,x,y,hex\nAnarchism,0.262346,-8.42901,#111111\nAuthoritarianism,0.375,5.97917,#00FFFF\nCapitalism,7.07562,-0.333333,#D4AF37\nConservatism,5.23438,3.09201,#1F4E79\nFascism,3.7328,8.71429,#5A2A27\nLiberalism,2.4158,-0.432292,#FF00FF\nLibertarianism,4.09314,-4.9281,#F2C94C\nProgressivism,-1.39141,-1.03283,#8E44AD\nSocial Democracy,-3.26243,-0.961257,#E75480\nSocialism,-6.09936,2.91453,#E63946\nSyndicalism,-5.77083,-4.21065,#F72902\n","ideology_categories9.csv":"name,x,y,hex\nAnarchism,0.262346,-8.42901,#111111\nCapitalism,7.07562,-0.333333,#D4AF37\nConservatism,5.23438,3.09201,#1F4E79\nFascism,3.7328,8.71429,#5A2A27\nLiberalism,2.4158,-0.432292,#FF00FF\nLibertarianism,4.09314,-4.9281,#F2C94C\nProgressivism,-1.39141,-1.03283,#8E44AD\nSocial Democracy,-3.26243,-0.961257,#E75480\nSocialism,-6.09936,2.91453,#E63946\nSyndicalism,-5.77083,-4.21065,#F72902\n","ideology_coordinates.csv":"name,x,y\nAbsolute Monarchy,8.72569,8.53819\nAccelerationism,-5.01984,-3.50198\nActivism,0,-4\nAgorism,2.27885,-8.59722\nAgrarianism,-5.63889,1.41667\nAgrarian Socialism,-7.70833,4.375\nAlt-Lite,5,0.625\nAlt-Right,8.75,4.6875\nAmerican School,8.125,4.375\nAmish,-4.444,-8.889\nAnarcha-Feminism,-6.45833,-8.95833\nAnarchism,0.262346,-8.42901\nAnarchism and Religion,-2.18364,-6.24228\nAnarchism Without Adjectives,-4.375,-9.375\nAnarchist Communism,-8.81439,-8.22348\nAnarchist Synthesis,0.625,-9.375\nAnarcho-Capitalism,8.41733,-8.51667\nAnarcho-Pacifism,-2.25,-8.375\nAnarcho-Primitivism,-1.39028,-9.81528\nAnarcho-Syndicalism,-6.13258,-8.84722\nAnarchy,-4,-8.16667\nAnti-Authoritarianism,-3.51389,-5.95833\nAnti-Capitalism,-6.875,0\nAnti-Communism,8.33333,-1.25\nAntifa,-1.875,-6.875\nAnti-Revisionism,-8.98413,7.39881\nAnti-Stalinist Left,-5.625,0.625\nAnti-Statism,3.125,-6.875\nApoliticism,-0.208333,0.208333\nArab Socialism,-3.75,7.29167\nAristocracy,4.89583,5.72917\nAthenian Democracy,3.35069,-1.96181\nAustrian School,7.70833,-6.31944\nAustromarxism,-5.20833,1.875\nAutarchism,4.16667,-9.375\nAuthoritarian Capitalism,8.08025,7.68056\nAuthoritarianism,0.375,5.97917\nAuthoritarian Socialism,-8.333,8.333\nAutonomist Marxism,-5.625,-5.625\nBa’athism,-2.53283,7.54167\nBarracks Communism,-8.125,8.125\nBlack Nationalism,-5.625,4.375\nBlanquism,-8.85417,3.02083\nBolshevism,-8.125,3.125\nBourgeois Socialism,-2.03125,7.8125\nBrazilian Integralism,1.875,8.125\nBritish Fascism,3.125,9.375\nBusiness Nationalism,8.3912,7.65046\nCameralism,6.875,5.625\nCantonal Rebellion,-1.875,-4.375\nCapitalism,7.07562,-0.333333\nCentrism,0,0\nChavismo,-5.61458,5.67708\nChristian Anarchism,-1.66667,-7.29167\nChristian Democracy,-1.12963,1.8858\nChristian Libertarianism,7.5,-6.4\nCivic Conservatism,2.222,4.444\nCivic Nationalism,6.70833,0.75\nCivil Libertarianism,2.91667,-5.83333\nClassical Liberalism,5.76389,-2.36581\nClassical Marxism,-9.07341,-3.13492\nClassical Radicalism,1,-2.45833\nClerical Fascism,0.625,8.125\nCollectivism,-6.95139,0.585069\nCollectivist Anarchism,-5.37879,-8.29419\nColonialism,9.00463,6.06481\nCommunalism,-10.706,0.416667\nCommunism,-7.81944,4.61806\nCommunitarianism,1,3\nCommunity Unionism,-6.125,-0.5625\nCompassionate Conservatism,2.70833,2.91667\nConfederation,2.08333,-0.208333\nConsensus Decision-Making,-8.889,4.444\nConsequentialism,3.73148,-7.26389\nConsequentialist Libertarianism,7.5,-6.25\nConservatism,5.23438,3.09201\nConservative Christianity,4.375,1.25\nConservative Liberalism,5.75,0.95\nConservative Socialism,-5.75,3.625\nConstitutionalism,5,-0.625\nConstitutional Monarchy,4.64506,4.45988\nConstitutional Patriotism,3.125,0.625\nContemporary Anarchism,-3.625,-9.625\nCooperative Federalism,-0.625,-1.875\nCorporate Liberalism,3.125,6.25\nCorporatism,2.75278,4.46944\nCorporatocracy,7.10938,6.11111\nCouncil Communism,-9.20988,-4.19907\nCrony Capitalism,9.375,8.125\nCrypto-Anarchy,3.75,-8.75\nCultural Conservatism,5.625,2.5625\nCultural Liberalism,1.875,-1.875\nCyberocracy,0.833333,4.79167\nDeath Deities,2.8125,10.625\nDark Enlightenment,10.25,-1.625\nDeep Ecology,-4.375,-0.416667\nDefective Democracy,0,1.667\nDe Leonism,-8.59375,-3.59375\nDemocracy,0.5,-4.5\nDemocratic Capitalism,7.5,2.5\nDemocratic Confederalism,-6.03125,-4.39062\nDemocratic Party,-2.222,0\nDemocratic Republic,0,-5\nDemocratic Socialism,-5.84785,-0.926768\nDeng Xiaoping Theory,-1.86343,4.43287\nDespotism,0,8\nDictatorship,0,3.75\nDirect Democracy,0,-3.75\nDistributism,-2.93171,1.4919\nDual Federalism,0.625,-1.875\nEco-Capitalism,3.75,-5.9375\nEcofascism,-1.90833,6.53611\nEconomic Liberalism,8.4375,-1.25\nEconomic Militarism,6.25,8.125\nEconomic Nationalism,2.5,3.75\nEconomic Patriotism,3.125,3.125\nEco-Socialism,-6.63333,-3.76389\nEduard Bernstein,-6.875,-3.4375\nEgalitarianism,-8,3\nEgoist Anarchism,1.62247,-9.98864\nElective Monarchy,4.49653,4.44792\nEmperor-System Fascism,6.875,9.375\nEmpire,0,7\nEnvironmentalism,-5.83333,-2.70833\nEsoteric Neo-Nazism,3.625,9.25\nEthical Socialism,-3,-5\nEurocommunism,-6.875,-0.625\nFabian Society,-8.125,-3.75\nFalangism,0.798611,8.35648\nFar-Right,8.5,8.5\nFascism,3.7328,8.71429\nFederalism,3,-3\nFederal Republic,3.5,3.5\nFeudalism,7.64969,4.73302\nFidelismo,-6.35694,4.63333\nFiscal Conservatism,8.84167,1.55833\nFordism,10.625,8.125\nFourierism,-1.875,-8.125\nFourth International — Posadist,-9.77183,3.30357\nFrancoist Spain,1.5625,7.5\nFreedom Caucus,2.222,-2.222\nFree Market Capitalism,6.66667,0\nFully Automated Space Communism,-10.625,4.375\nFundamentalism,8.667,6\nFusionism,6.9375,-6.9375\nFuturism,-0.740741,5.13889\nFuturist Political Party,-1.58333,4.83333\nGandhism,-5.79167,-4.18849\nGary Snyder,-3.125,-6.875\nGay Nazis,-0.625,6.875\nGeniocracy,-1.875,4.375\nGeolibertarianism,1.09105,-6.37963\nGeorgism,0.356481,-5.02199\nGreen Anarchism,-6.22024,-8.4127\nGreen Conservatism,2.46875,3.59375\nGreen Liberalism,-0.95,-3.125\nGreen Libertarianism,3.125,-4.5\nGreen Party,-6.5,-5\nGuevarism,-7.8125,5\nGuild Socialism,-7.8125,-5.46875\nHindutva,2.08333,6.04167\nHo Chi Minh Thought,-6.47396,3.50868\nHomonationalism,0.625,9.375\nHoppeans,7.3125,-8.24306\nHoxhaism,-7.5,8.25\nHuey Long,-2.93651,4.98016\nHybrid Regime,0,0\nIllegalism,5.625,-10.625\nImperialism,8.66898,7.46528\nIndividualism,4.4375,-7.5625\nIndividualist Anarchism,2.98485,-8.86742\nIndividualist Feminism,2.8125,-5\nInsurrectionary Anarchism,-5.83333,-8.125\nIntegralism,0.9375,7.39583\nItalian Fascism,1.125,8.875\nJacobinism,-7.08333,3.95833\nJeffersonian Democracy,0.625,0\nJuche,-3.3287,9.08218\nKakistocracy,-10.625,-5.625\nKemalism,-2.222,2.222\nKeynesianism,3.125,5.625\nKhmer Nationalism,-9.375,9.375\nKhomeinism,-1.25,6.25\nKleptocracy,4.0625,2.70833\nKokkashugi,5,8.75\nKuomintang,0.3125,3.29861\nLabor Movement,-1.45,1.475\nLabor Zionism,-1.667,5\nLabour Party,-4.444,2.222\nLaissez-Faire,5.78333,-2.83333\nLeft Communism,-8.84375,-1.1875\nLeft-Libertarianism,-0.573529,-4.69608\nLeft-Wing,-8,-1\nLeft-Wing Nationalism,-3.90586,5.06019\nLeft-Wing Populism,-5.83333,2.35648\nLeninism,-8.37073,3.63355\nLiberal Autocracy,8.75,8.75\nLiberal Catholicism,3,3\nLiberal Conservatism,5.78993,2.01562\nLiberal Corporatism,4.16667,-1.45833\nLiberal Democracy,-0.969444,-0.252778\nLiberal Feminism,-4.375,-1.875\nLiberal Internationalism,7.5,-1.25\nLiberalism,2.4158,-0.432292\nLiberal Nationalism,4.375,0.625\nLiberal Socialism,-3.5571,-4.06019\nLibertarian Christianity,5.625,-6.875\nLibertarian Conservatism,7.40895,-0.871914\nLibertarianism,4.09314,-4.9281\nLibertarianism in the United States,9.375,-3.125\nLibertarian Marxism,-8.69444,-6.08333\nLibertarian Paternalism,1.25,-3.125\nLibertarian Socialism,-6.46142,-6.11111\nLuxemburgism,-8.57361,-2.37778\nMake America Great Again,6.667,0\nMafia,6.667,-4.444\nMaoism,-6.26389,8.27885\nMaoism-Third Worldism,-3.125,6.875\nMaritime Republics,4.444,-2.222\nMarket Anarchism,2.38889,-8\nMarket Socialism,-3.06439,-3.46591\nMarxism,-8.79722,-0.808333\nMarxism-Leninism,-8.32083,6.84583\nMarxism-Leninism-Maoism,-7.39583,4.6875\nMarxist Humanism,-5,-1.875\nMercantilism,8.125,5.625\nMetaxism,3.125,5.625\nMight Makes Right,10.706,10.4977\nMikhail Gorbachev,-3.75,1.875\nMilitary Junta,6.25,8.75\nMixed Economy,0.833333,0\nModerates,0,0\nMonarchism,3,8\nMonarchy,8.889,8.889\nMoralism,2.222,6.667\nMugabeism,-4.74206,6.59524\nMunicipalism,-5.625,-6.875\nMutualism,-1.15355,-8.58179\nNational-Anarchism,0.399306,-7.82118\nNational Bolshevism,-5.70486,9.04051\nNational Communism,-7.575,7.225\nNational Conservatism,4.8125,4.40625\nNational Liberalism,3.35417,0.145833\nNational Syndicalism,-5,4.16667\nNationalism,2.54167,6.29167\nNatural-Rights Libertarianism,5.625,-5.625\nNaturism,-3.0625,-7.9375\nNazism,0.528549,8.625\nNeo-Capitalism,3.125,4.375\nNeoclassical Liberalism,3.33532,-5.8631\nNeo-Confederates,8.61111,-1.94444\nNeoconservatism,6.45648,3.98704\nNeo-Fascism,5.26786,8.72619\nNeoliberalism,4.64259,-0.144444\nNeo-Libertarianism,6.57812,-4.53125\nNeo-Marxism,-5.3125,1.61458\nNeo-Nazism,4.375,9.375\nNeo-Stalinism,-8.125,8.125\nNeozapatismo,-2.8125,-5\nNew Economic Policy,-5,5\nNew Labour,3,1\nNew Left,-1.667,-5\nNight-Watchman State,7.2402,-6.80964\nNineteen Eighty-Four,-2,10.4884\nNordic Model,-1.375,-3.08333\nObjectivism,7.51852,-6.15741\nOld Left,-5,1.667\nOligarchy,1.333,6.16667\nOne-Nation Conservatism,2.41667,2.5\nOrdoliberalism,4.1875,-1.5\nOrthodox Marxism,-8.59028,1.67708\nOswald Mosley,3.125,9.375\nPaleoconservatism,7.27083,4.77431\nPaleolibertarianism,7.41528,-4.53611\nPan-Arabism,1.875,5.625\nPancasila,-3.125,8.125\nPan-Turkism,3.125,5.625\nParticipatory Democracy,0,-5\nPaternalism,2.222,2.222\nPaternalistic Conservatism,-1.6,3.25\nPhilosophical Anarchism,3.125,-8.125\nPinochetism,8.66071,7.19246\nPlatformism,-4.375,-8.125\nPlutocracy,8,-2\nPopulism,4,-8\nPosthumanism,6.5635,-10.625\nPostmodernism,-6.667,-6.667\nPre-Marxist Communism,-6.875,-1.875\nProgressive Conservatism,2.5,2.5\nProgressivism,-1.39141,-1.03283\nPropertarianism,8.54167,-6.875\nProtectionism,1.875,4.375\nProto-Fascism,3.125,6.875\nQueer Anarchism,-5.375,-7.75\nRadical Centrism,0.15625,-0.15625\nRaëlism,-1.875,4.375\nRainbow Capitalism,5.875,-8.125\nRational Egoism,8.5625,-6.8125\nReactionism,7.8125,5.3125\nReaganism,6.54167,4.41667\nReaganomics,9.375,2.5\nReformism,-0.5625,-1.1875\nReligious Democracy,-2.5,3.125\nRepresentative Democracy,0,-3\nRepublican In Name Only,2.222,0\nRepublicanism,-6.875,8.125\nRepublicanism in the United States,6.875,1.875\nRight-Libertarianism,6.51736,-3.55903\nRight of Conquest,6.667,8.889\nRight-Wing Nationalism,6.66667,3.33333\nRight-Wing Populism,7.1131,4.40476\nRussian Nihilist Movement,0,-10.625\nScience,-2.222,0\nSecular Liberalism,3.125,-0.625\nSennacieca Asocio Tutmonda,-5.625,-9.375\nSituationist International,-8.40278,-6.83333\nSocial Anarchism,-6.875,-7.8125\nSocial Conservatism,4.375,2.125\nSocial Darwinism,10.706,0.208333\nSocial Democracy,-3.26243,-0.961257\nSocial Ecology,-4.375,1.875\nSocial Gospel,-3.09375,2.28125\nSocialism,-6.09936,2.91453\nSocialism of the 21st Century,-3.75,1.25\nSocialist Democracy,-7.5,2.5\nSocial Liberalism,-0.00992063,-1.2996\nSoviet Democracy,0,-8.333\nStalinism,-8.01736,8.83218\nState Capitalism,-0.253472,6.03704\nState Monopoly Capitalism,9.375,8.125\nState Socialism,-5.52778,5.83333\nStatism,-3,3.78125\nStatus Quo,0,0\nStrasserism,-5.21296,8.01852\nStratocracy,8.125,9.375\nSwiss Democracy,0,-2.222\nSyndicalism,-5.77083,-4.21065\nTechnocracy,-2.33507,5.80729\nTechnogaianism,-1.875,-1.875\nTechnoliberalism,1.825,-4.125\nTechnolibertarianism,3.125,-3.125\nThatcherism,7.5625,4.75\nTheocracy,3.65,6.60278\nThird International Theory,-5.625,1.875\nThird Position,-0.729167,8.85417\nThird Way,1.26667,1.12083\nThree Principles of the People,1.45833,2.5\nTitoism,-4.41358,5.81019\nTory Socialism,1,7\nTotalitarianism,-0.8,8.44444\nTradition,2.222,0\nTraditionalism,5.30556,5.75\nTraditionalist Conservatism,5.34722,3.77083\nTranshumanism,2.05556,-1.75\nTranshumanists,2.82407,-6.5162\nTribalism,-3.75,-9.375\nTripartism,-0.625,3.125\nTrotskyism,-8.4469,1.88399\nTrumpism,7.70833,3.95833\nUnionism,-3.6875,2.4375\nUtopian Socialism,-10.625,-1.875\nVoluntaryism,5.45833,-8.57292\nWar Communism,-8.333,5\nWelfare Capitalism,-0.5,-1.61111\nWelfare State,-1.667,0\nWelfarism,-2.21181,-1.74306\nWhiggism,6.875,-3.125\nWorkers’ Party of Korea,-3.4375,9.375\nXi Jinping Thought,-3.90625,7.1875\nYangism,-3.125,-0.625\nZionism,5.375,3.625","ideology_coordinates10.csv":"name,x,y\nAgorism,2.27885,-8.59722\nAnarchist Communism,-8.81439,-8.22348\nAnarcho-Capitalism,8.41733,-8.51667\nAnarcho-Primitivism,-1.39028,-9.81528\nAnarcho-Syndicalism,-6.13258,-8.84722\nBa’athism,-2.53283,7.54167\nClassical Liberalism,5.76389,-2.36581\nCollectivist Anarchism,-5.37879,-8.29419\nConservatism,5.23438,3.09201\nDemocratic Socialism,-5.84785,-0.926768\nDistributism,-2.93171,1.4919\nEgoist Anarchism,1.62247,-9.98864\nFascism,3.7328,8.71429\nFidelismo,-6.35694,4.63333\nGeorgism,0.356481,-5.02199\nHoppeans,7.3125,-8.24306\nIndividualist Anarchism,2.98485,-8.86742\nJuche,-3.3287,9.08218\nLeft-Libertarianism,-0.573529,-4.69608\nLeninism,-8.37073,3.63355\nLiberalism,2.4158,-0.432292\nLibertarianism,4.09314,-4.9281\nLibertarian Socialism,-6.46142,-6.11111\nLuxemburgism,-8.57361,-2.37778\nMaoism,-6.26389,8.27885\nMarket Socialism,-3.06439,-3.46591\nMarxism-Leninism,-8.32083,6.84583\nMutualism,-1.15355,-8.58179\nNational Bolshevism,-5.70486,9.04051\nNazism,0.528549,8.625\nNeoconservatism,6.45648,3.98704\nNeoliberalism,4.64259,-0.144444\nNight-Watchman State,7.2402,-6.80964\nNineteen Eighty-Four,-2,10.4884\nPaleolibertarianism,7.41528,-4.53611\nProgressivism,-1.39141,-1.03283\nSocial Democracy,-3.26243,-0.961257\nSocialism,-6.09936,2.91453\nSocial Liberalism,-0.00992063,-1.2996\nStalinism,-8.01736,8.83218\nState Capitalism,-0.253472,6.03704\nSyndicalism,-5.77083,-4.21065\nTheocracy,3.65,6.60278\nThird Way,1.26667,1.12083\nTrotskyism,-8.4469,1.88399\n","ideology_coordinates2.csv":"name,x,y\nAbsolute Monarchy,8.72569,8.53819\nAccelerationism,-5.01984,-3.50198\nActivism,0,-4\nAgorism,2.27885,-8.59722\nAgrarianism,-5.63889,1.41667\nAgrarian Socialism,-7.70833,4.375\nAlt-Right,8.75,4.6875\nAnarcha-Feminism,-6.45833,-8.95833\nAnarchism,0.262346,-8.42901\nAnarchism and Religion,-2.18364,-6.24228\nAnarchist Communism,-8.81439,-8.22348\nAnarcho-Capitalism,8.41733,-8.51667\nAnarcho-Pacifism,-2.25,-8.375\nAnarcho-Primitivism,-1.39028,-9.81528\nAnarcho-Syndicalism,-6.13258,-8.84722\nAnarchy,-4,-8.16667\nAnti-Authoritarianism,-3.51389,-5.95833\nAnti-Communism,8.33333,-1.25\nAnti-Revisionism,-8.98413,7.39881\nApoliticism,-0.208333,0.208333\nArab Socialism,-3.75,7.29167\nAristocracy,4.89583,5.72917\nAthenian Democracy,3.35069,-1.96181\nAustrian School,7.70833,-6.31944\nAustromarxism,-5.20833,1.875\nAutarchism,4.16667,-9.375\nAuthoritarian Capitalism,8.08025,7.68056\nAuthoritarianism,0.375,5.97917\nAutonomist Marxism,-5.625,-5.625\nBa’athism,-2.53283,7.54167\nBlanquism,-8.85417,3.02083\nBolshevism,-8.125,3.125\nBourgeois Socialism,-2.03125,7.8125\nBusiness Nationalism,8.3912,7.65046\nCapitalism,7.07562,-0.333333\nCentrism,0,0\nChavismo,-5.61458,5.67708\nChristian Anarchism,-1.66667,-7.29167\nChristian Democracy,-1.12963,1.8858\nChristian Libertarianism,7.5,-6.4\nCivic Nationalism,6.70833,0.75\nCivil Libertarianism,2.91667,-5.83333\nClassical Liberalism,5.76389,-2.36581\nClassical Marxism,-9.07341,-3.13492\nClassical Radicalism,1,-2.45833\nClerical Fascism,0.625,8.125\nCollectivism,-6.95139,0.585069\nCollectivist Anarchism,-5.37879,-8.29419\nColonialism,9.00463,6.06481\nCommunalism,-10.706,0.416667\nCommunism,-7.81944,4.61806\nCommunity Unionism,-6.125,-0.5625\nCompassionate Conservatism,2.70833,2.91667\nConfederation,2.08333,-0.208333\nConsequentialism,3.73148,-7.26389\nConsequentialist Libertarianism,7.5,-6.25\nConservatism,5.23438,3.09201\nConservative Christianity,4.375,1.25\nConservative Liberalism,5.75,0.95\nConservative Socialism,-5.75,3.625\nConstitutionalism,5,-0.625\nConstitutional Monarchy,4.64506,4.45988\nContemporary Anarchism,-3.625,-9.625\nCorporatism,2.75278,4.46944\nCorporatocracy,7.10938,6.11111\nCouncil Communism,-9.20988,-4.19907\nCultural Conservatism,5.625,2.5625\nCyberocracy,0.833333,4.79167\nDeath Deities,2.8125,10.625\nDark Enlightenment,10.25,-1.625\nDeep Ecology,-4.375,-0.416667\nDe Leonism,-8.59375,-3.59375\nDemocracy,0.5,-4.5\nDemocratic Confederalism,-6.03125,-4.39062\nDemocratic Socialism,-5.84785,-0.926768\nDeng Xiaoping Theory,-1.86343,4.43287\nDictatorship,0,3.75\nDirect Democracy,0,-3.75\nDistributism,-2.93171,1.4919\nEco-Capitalism,3.75,-5.9375\nEcofascism,-1.90833,6.53611\nEconomic Liberalism,8.4375,-1.25\nEconomic Nationalism,2.5,3.75\nEco-Socialism,-6.63333,-3.76389\nEduard Bernstein,-6.875,-3.4375\nEgoist Anarchism,1.62247,-9.98864\nElective Monarchy,4.49653,4.44792\nEnvironmentalism,-5.83333,-2.70833\nEsoteric Neo-Nazism,3.625,9.25\nEurocommunism,-6.875,-0.625\nFalangism,0.798611,8.35648\nFascism,3.7328,8.71429\nFeudalism,7.64969,4.73302\nFidelismo,-6.35694,4.63333\nFiscal Conservatism,8.84167,1.55833\nFordism,10.625,8.125\nFourth International — Posadist,-9.77183,3.30357\nFrancoist Spain,1.5625,7.5\nFundamentalism,8.667,6\nFusionism,6.9375,-6.9375\nFuturism,-0.740741,5.13889\nFuturist Political Party,-1.58333,4.83333\nGandhism,-5.79167,-4.18849\nGay Nazis,-0.625,6.875\nGeolibertarianism,1.09105,-6.37963\nGeorgism,0.356481,-5.02199\nGreen Anarchism,-6.22024,-8.4127\nGreen Conservatism,2.46875,3.59375\nGreen Liberalism,-0.95,-3.125\nGreen Libertarianism,3.125,-4.5\nGuevarism,-7.8125,5\nGuild Socialism,-7.8125,-5.46875\nHindutva,2.08333,6.04167\nHo Chi Minh Thought,-6.47396,3.50868\nHoppeans,7.3125,-8.24306\nHoxhaism,-7.5,8.25\nHuey Long,-2.93651,4.98016\nHybrid Regime,0,0\nIllegalism,5.625,-10.625\nImperialism,8.66898,7.46528\nIndividualism,4.4375,-7.5625\nIndividualist Anarchism,2.98485,-8.86742\nIndividualist Feminism,2.8125,-5\nInsurrectionary Anarchism,-5.83333,-8.125\nIntegralism,0.9375,7.39583\nItalian Fascism,1.125,8.875\nJacobinism,-7.08333,3.95833\nJeffersonian Democracy,0.625,0\nJuche,-3.3287,9.08218\nKleptocracy,4.0625,2.70833\nKokkashugi,5,8.75\nKuomintang,0.3125,3.29861\nLabor Movement,-1.45,1.475\nLaissez-Faire,5.78333,-2.83333\nLeft Communism,-8.84375,-1.1875\nLeft-Libertarianism,-0.573529,-4.69608\nLeft-Wing Nationalism,-3.90586,5.06019\nLeft-Wing Populism,-5.83333,2.35648\nLeninism,-8.37073,3.63355\nLiberal Conservatism,5.78993,2.01562\nLiberal Corporatism,4.16667,-1.45833\nLiberal Democracy,-0.969444,-0.252778\nLiberal Internationalism,7.5,-1.25\nLiberalism,2.4158,-0.432292\nLiberal Socialism,-3.5571,-4.06019\nLibertarian Conservatism,7.40895,-0.871914\nLibertarianism,4.09314,-4.9281\nLibertarian Marxism,-8.69444,-6.08333\nLibertarian Paternalism,1.25,-3.125\nLibertarian Socialism,-6.46142,-6.11111\nLuxemburgism,-8.57361,-2.37778\nMaoism,-6.26389,8.27885\nMarket Anarchism,2.38889,-8\nMarket Socialism,-3.06439,-3.46591\nMarxism,-8.79722,-0.808333\nMarxism-Leninism,-8.32083,6.84583\nMarxism-Leninism-Maoism,-7.39583,4.6875\nMarxist Humanism,-5,-1.875\nMight Makes Right,10.706,10.4977\nMixed Economy,0.833333,0\nMugabeism,-4.74206,6.59524\nMutualism,-1.15355,-8.58179\nNational-Anarchism,0.399306,-7.82118\nNational Bolshevism,-5.70486,9.04051\nNational Communism,-7.575,7.225\nNational Conservatism,4.8125,4.40625\nNational Liberalism,3.35417,0.145833\nNational Syndicalism,-5,4.16667\nNationalism,2.54167,6.29167\nNatural-Rights Libertarianism,5.625,-5.625\nNaturism,-3.0625,-7.9375\nNazism,0.528549,8.625\nNeoclassical Liberalism,3.33532,-5.8631\nNeo-Confederates,8.61111,-1.94444\nNeoconservatism,6.45648,3.98704\nNeo-Fascism,5.26786,8.72619\nNeoliberalism,4.64259,-0.144444\nNeo-Libertarianism,6.57812,-4.53125\nNeo-Marxism,-5.3125,1.61458\nNeo-Nazism,4.375,9.375\nNeo-Stalinism,-8.125,8.125\nNeozapatismo,-2.8125,-5\nNight-Watchman State,7.2402,-6.80964\nNineteen Eighty-Four,-2,10.4884\nNordic Model,-1.375,-3.08333\nObjectivism,7.51852,-6.15741\nOligarchy,1.333,6.16667\nOne-Nation Conservatism,2.41667,2.5\nOrdoliberalism,4.1875,-1.5\nOrthodox Marxism,-8.59028,1.67708\nPaleoconservatism,7.27083,4.77431\nPaleolibertarianism,7.41528,-4.53611\nPaternalistic Conservatism,-1.6,3.25\nPhilosophical Anarchism,3.125,-8.125\nPinochetism,8.66071,7.19246\nPosthumanism,6.5635,-10.625\nProgressive Conservatism,2.5,2.5\nProgressivism,-1.39141,-1.03283\nPropertarianism,8.54167,-6.875\nQueer Anarchism,-5.375,-7.75\nRadical Centrism,0.15625,-0.15625\nRainbow Capitalism,5.875,-8.125\nRational Egoism,8.5625,-6.8125\nReactionism,7.8125,5.3125\nReaganism,6.54167,4.41667\nReformism,-0.5625,-1.1875\nRight-Libertarianism,6.51736,-3.55903\nRight-Wing Nationalism,6.66667,3.33333\nRight-Wing Populism,7.1131,4.40476\nScience,-2.222,0\nSituationist International,-8.40278,-6.83333\nSocial Anarchism,-6.875,-7.8125\nSocial Conservatism,4.375,2.125\nSocial Darwinism,10.706,0.208333\nSocial Democracy,-3.26243,-0.961257\nSocial Gospel,-3.09375,2.28125\nSocialism,-6.09936,2.91453\nSocial Liberalism,-0.00992063,-1.2996\nStalinism,-8.01736,8.83218\nState Capitalism,-0.253472,6.03704\nState Socialism,-5.52778,5.83333\nStatism,-3,3.78125\nStatus Quo,0,0\nStrasserism,-5.21296,8.01852\nSyndicalism,-5.77083,-4.21065\nTechnocracy,-2.33507,5.80729\nTechnogaianism,-1.875,-1.875\nTechnoliberalism,1.825,-4.125\nThatcherism,7.5625,4.75\nTheocracy,3.65,6.60278\nThird Position,-0.729167,8.85417\nThird Way,1.26667,1.12083\nThree Principles of the People,1.45833,2.5\nTitoism,-4.41358,5.81019\nTotalitarianism,-0.8,8.44444\nTradition,2.222,0\nTraditionalism,5.30556,5.75\nTraditionalist Conservatism,5.34722,3.77083\nTranshumanism,2.05556,-1.75\nTranshumanists,2.82407,-6.5162\nTrotskyism,-8.4469,1.88399\nTrumpism,7.70833,3.95833\nUnionism,-3.6875,2.4375\nUtopian Socialism,-10.625,-1.875\nVoluntaryism,5.45833,-8.57292\nWelfare Capitalism,-0.5,-1.61111\nWelfarism,-2.21181,-1.74306\nWorkers’ Party of Korea,-3.4375,9.375\nXi Jinping Thought,-3.90625,7.1875\nZionism,5.375,3.625","ideology_coordinates3.csv":"name,x,y\nAbsolute Monarchy,8.72569,8.53819\nAccelerationism,-5.01984,-3.50198\nAgorism,2.27885,-8.59722\nAgrarianism,-5.63889,1.41667\nAgrarian Socialism,-7.70833,4.375\nAnarcha-Feminism,-6.45833,-8.95833\nAnarchism,0.262346,-8.42901\nAnarchism and Religion,-2.18364,-6.24228\nAnarchist Communism,-8.81439,-8.22348\nAnarcho-Capitalism,8.41733,-8.51667\nAnarcho-Pacifism,-2.25,-8.375\nAnarcho-Primitivism,-1.39028,-9.81528\nAnarcho-Syndicalism,-6.13258,-8.84722\nAnti-Authoritarianism,-3.51389,-5.95833\nAnti-Communism,8.33333,-1.25\nAnti-Revisionism,-8.98413,7.39881\nApoliticism,-0.208333,0.208333\nArab Socialism,-3.75,7.29167\nAristocracy,4.89583,5.72917\nAthenian Democracy,3.35069,-1.96181\nAustromarxism,-5.20833,1.875\nAutarchism,4.16667,-9.375\nAuthoritarian Capitalism,8.08025,7.68056\nAuthoritarianism,0.375,5.97917\nBa’athism,-2.53283,7.54167\nBourgeois Socialism,-2.03125,7.8125\nBusiness Nationalism,8.3912,7.65046\nCapitalism,7.07562,-0.333333\nCentrism,0,0\nChavismo,-5.61458,5.67708\nChristian Anarchism,-1.66667,-7.29167\nChristian Democracy,-1.12963,1.8858\nChristian Libertarianism,7.5,-6.4\nCivic Nationalism,6.70833,0.75\nCivil Libertarianism,2.91667,-5.83333\nClassical Liberalism,5.76389,-2.36581\nClassical Marxism,-9.07341,-3.13492\nClassical Radicalism,1,-2.45833\nCollectivism,-6.95139,0.585069\nCollectivist Anarchism,-5.37879,-8.29419\nColonialism,9.00463,6.06481\nCommunalism,-10.706,0.416667\nCommunism,-7.81944,4.61806\nCommunity Unionism,-6.125,-0.5625\nCompassionate Conservatism,2.70833,2.91667\nConfederation,2.08333,-0.208333\nConsequentialism,3.73148,-7.26389\nConservatism,5.23438,3.09201\nConservative Liberalism,5.75,0.95\nConservative Socialism,-5.75,3.625\nConstitutional Monarchy,4.64506,4.45988\nContemporary Anarchism,-3.625,-9.625\nCorporatism,2.75278,4.46944\nCorporatocracy,7.10938,6.11111\nCouncil Communism,-9.20988,-4.19907\nCyberocracy,0.833333,4.79167\nDark Enlightenment,10.25,-1.625\nDeep Ecology,-4.375,-0.416667\nDe Leonism,-8.59375,-3.59375\nDemocratic Confederalism,-6.03125,-4.39062\nDemocratic Socialism,-5.84785,-0.926768\nDeng Xiaoping Theory,-1.86343,4.43287\nDictatorship,0,3.75\nDirect Democracy,0,-3.75\nDistributism,-2.93171,1.4919\nEcofascism,-1.90833,6.53611\nEco-Socialism,-6.63333,-3.76389\nEgoist Anarchism,1.62247,-9.98864\nElective Monarchy,4.49653,4.44792\nEnvironmentalism,-5.83333,-2.70833\nEsoteric Neo-Nazism,3.625,9.25\nEurocommunism,-6.875,-0.625\nFalangism,0.798611,8.35648\nFascism,3.7328,8.71429\nFeudalism,7.64969,4.73302\nFidelismo,-6.35694,4.63333\nFiscal Conservatism,8.84167,1.55833\nFordism,10.625,8.125\nFourth International — Posadist,-9.77183,3.30357\nFundamentalism,8.667,6\nFuturism,-0.740741,5.13889\nFuturist Political Party,-1.58333,4.83333\nGandhism,-5.79167,-4.18849\nGeolibertarianism,1.09105,-6.37963\nGeorgism,0.356481,-5.02199\nGreen Anarchism,-6.22024,-8.4127\nGreen Conservatism,2.46875,3.59375\nGreen Liberalism,-0.95,-3.125\nGreen Libertarianism,3.125,-4.5\nGuevarism,-7.8125,5\nGuild Socialism,-7.8125,-5.46875\nHindutva,2.08333,6.04167\nHo Chi Minh Thought,-6.47396,3.50868\nHoppeans,7.3125,-8.24306\nHoxhaism,-7.5,8.25\nHuey Long,-2.93651,4.98016\nHybrid Regime,0,0\nIllegalism,5.625,-10.625\nImperialism,8.66898,7.46528\nIndividualist Anarchism,2.98485,-8.86742\nInsurrectionary Anarchism,-5.83333,-8.125\nJacobinism,-7.08333,3.95833\nJuche,-3.3287,9.08218\nKleptocracy,4.0625,2.70833\nLabor Movement,-1.45,1.475\nLaissez-Faire,5.78333,-2.83333\nLeft Communism,-8.84375,-1.1875\nLeft-Libertarianism,-0.573529,-4.69608\nLeft-Wing Nationalism,-3.90586,5.06019\nLeft-Wing Populism,-5.83333,2.35648\nLeninism,-8.37073,3.63355\nLiberal Conservatism,5.78993,2.01562\nLiberal Corporatism,4.16667,-1.45833\nLiberal Democracy,-0.969444,-0.252778\nLiberalism,2.4158,-0.432292\nLiberal Socialism,-3.5571,-4.06019\nLibertarian Conservatism,7.40895,-0.871914\nLibertarianism,4.09314,-4.9281\nLibertarian Marxism,-8.69444,-6.08333\nLibertarian Socialism,-6.46142,-6.11111\nLuxemburgism,-8.57361,-2.37778\nMaoism,-6.26389,8.27885\nMarket Anarchism,2.38889,-8\nMarket Socialism,-3.06439,-3.46591\nMarxism,-8.79722,-0.808333\nMarxism-Leninism,-8.32083,6.84583\nMight Makes Right,10.706,10.4977\nMugabeism,-4.74206,6.59524\nMutualism,-1.15355,-8.58179\nNational-Anarchism,0.399306,-7.82118\nNational Bolshevism,-5.70486,9.04051\nNational Communism,-7.575,7.225\nNational Conservatism,4.8125,4.40625\nNational Liberalism,3.35417,0.145833\nNational Syndicalism,-5,4.16667\nNationalism,2.54167,6.29167\nNazism,0.528549,8.625\nNeoclassical Liberalism,3.33532,-5.8631\nNeoconservatism,6.45648,3.98704\nNeo-Fascism,5.26786,8.72619\nNeoliberalism,4.64259,-0.144444\nNeo-Libertarianism,6.57812,-4.53125\nNeo-Marxism,-5.3125,1.61458\nNeo-Nazism,4.375,9.375\nNight-Watchman State,7.2402,-6.80964\nNineteen Eighty-Four,-2,10.4884\nNordic Model,-1.375,-3.08333\nObjectivism,7.51852,-6.15741\nOligarchy,1.333,6.16667\nOne-Nation Conservatism,2.41667,2.5\nOrdoliberalism,4.1875,-1.5\nOrthodox Marxism,-8.59028,1.67708\nPaleoconservatism,7.27083,4.77431\nPaleolibertarianism,7.41528,-4.53611\nPaternalistic Conservatism,-1.6,3.25\nPinochetism,8.66071,7.19246\nProgressive Conservatism,2.5,2.5\nProgressivism,-1.39141,-1.03283\nPropertarianism,8.54167,-6.875\nQueer Anarchism,-5.375,-7.75\nRadical Centrism,0.15625,-0.15625\nRainbow Capitalism,5.875,-8.125\nReactionism,7.8125,5.3125\nReaganism,6.54167,4.41667\nRight-Libertarianism,6.51736,-3.55903\nRight-Wing Populism,7.1131,4.40476\nScience,-2.222,0\nSituationist International,-8.40278,-6.83333\nSocial Conservatism,4.375,2.125\nSocial Darwinism,10.706,0.208333\nSocial Democracy,-3.26243,-0.961257\nSocial Gospel,-3.09375,2.28125\nSocialism,-6.09936,2.91453\nSocial Liberalism,-0.00992063,-1.2996\nStalinism,-8.01736,8.83218\nState Capitalism,-0.253472,6.03704\nState Socialism,-5.52778,5.83333\nStatism,-3,3.78125\nStatus Quo,0,0\nStrasserism,-5.21296,8.01852\nSyndicalism,-5.77083,-4.21065\nTechnocracy,-2.33507,5.80729\nTechnoliberalism,1.825,-4.125\nTheocracy,3.65,6.60278\nThird Way,1.26667,1.12083\nThree Principles of the People,1.45833,2.5\nTitoism,-4.41358,5.81019\nTotalitarianism,-0.8,8.44444\nTradition,2.222,0\nTraditionalism,5.30556,5.75\nTraditionalist Conservatism,5.34722,3.77083\nTranshumanism,2.05556,-1.75\nTranshumanists,2.82407,-6.5162\nTrotskyism,-8.4469,1.88399\nTrumpism,7.70833,3.95833\nUtopian Socialism,-10.625,-1.875\nVoluntaryism,5.45833,-8.57292\nWelfarism,-2.21181,-1.74306\nWorkers’ Party of Korea,-3.4375,9.375\nXi Jinping Thought,-3.90625,7.1875\nZionism,5.375,3.625\n","ideology_coordinates4.csv":"name,x,y\nAbsolute Monarchy,8.72569,8.53819\nAccelerationism,-5.01984,-3.50198\nAgorism,2.27885,-8.59722\nAgrarianism,-5.63889,1.41667\nAnarchism,0.262346,-8.42901\nAnarchism and Religion,-2.18364,-6.24228\nAnarchist Communism,-8.81439,-8.22348\nAnarcho-Capitalism,8.41733,-8.51667\nAnarcho-Pacifism,-2.25,-8.375\nAnarcho-Primitivism,-1.39028,-9.81528\nAnarcho-Syndicalism,-6.13258,-8.84722\nAnti-Authoritarianism,-3.51389,-5.95833\nAnti-Revisionism,-8.98413,7.39881\nAristocracy,4.89583,5.72917\nAthenian Democracy,3.35069,-1.96181\nAuthoritarian Capitalism,8.08025,7.68056\nAuthoritarianism,0.375,5.97917\nBa’athism,-2.53283,7.54167\nBourgeois Socialism,-2.03125,7.8125\nBusiness Nationalism,8.3912,7.65046\nCapitalism,7.07562,-0.333333\nCentrism,0,0\nChavismo,-5.61458,5.67708\nChristian Democracy,-1.12963,1.8858\nChristian Libertarianism,7.5,-6.4\nClassical Liberalism,5.76389,-2.36581\nClassical Marxism,-9.07341,-3.13492\nCollectivism,-6.95139,0.585069\nCollectivist Anarchism,-5.37879,-8.29419\nCommunalism,-10.706,0.416667\nCommunism,-7.81944,4.61806\nCommunity Unionism,-6.125,-0.5625\nConservatism,5.23438,3.09201\nConservative Liberalism,5.75,0.95\nConservative Socialism,-5.75,3.625\nConstitutional Monarchy,4.64506,4.45988\nContemporary Anarchism,-3.625,-9.625\nCorporatism,2.75278,4.46944\nCorporatocracy,7.10938,6.11111\nCouncil Communism,-9.20988,-4.19907\nDark Enlightenment,10.25,-1.625\nDe Leonism,-8.59375,-3.59375\nDemocratic Confederalism,-6.03125,-4.39062\nDemocratic Socialism,-5.84785,-0.926768\nDeng Xiaoping Theory,-1.86343,4.43287\nDictatorship,0,3.75\nDirect Democracy,0,-3.75\nDistributism,-2.93171,1.4919\nEcofascism,-1.90833,6.53611\nEco-Socialism,-6.63333,-3.76389\nEgoist Anarchism,1.62247,-9.98864\nElective Monarchy,4.49653,4.44792\nEsoteric Neo-Nazism,3.625,9.25\nFalangism,0.798611,8.35648\nFascism,3.7328,8.71429\nFeudalism,7.64969,4.73302\nFidelismo,-6.35694,4.63333\nFiscal Conservatism,8.84167,1.55833\nFordism,10.625,8.125\nFourth International — Posadist,-9.77183,3.30357\nGandhism,-5.79167,-4.18849\nGeolibertarianism,1.09105,-6.37963\nGeorgism,0.356481,-5.02199\nGreen Anarchism,-6.22024,-8.4127\nGreen Conservatism,2.46875,3.59375\nGreen Liberalism,-0.95,-3.125\nGreen Libertarianism,3.125,-4.5\nGuevarism,-7.8125,5\nGuild Socialism,-7.8125,-5.46875\nHindutva,2.08333,6.04167\nHo Chi Minh Thought,-6.47396,3.50868\nHoppeans,7.3125,-8.24306\nHoxhaism,-7.5,8.25\nHuey Long,-2.93651,4.98016\nImperialism,8.66898,7.46528\nIndividualist Anarchism,2.98485,-8.86742\nJuche,-3.3287,9.08218\nKleptocracy,4.0625,2.70833\nLabor Movement,-1.45,1.475\nLaissez-Faire,5.78333,-2.83333\nLeft Communism,-8.84375,-1.1875\nLeft-Libertarianism,-0.573529,-4.69608\nLeft-Wing Nationalism,-3.90586,5.06019\nLeft-Wing Populism,-5.83333,2.35648\nLeninism,-8.37073,3.63355\nLiberal Conservatism,5.78993,2.01562\nLiberal Democracy,-0.969444,-0.252778\nLiberalism,2.4158,-0.432292\nLiberal Socialism,-3.5571,-4.06019\nLibertarian Conservatism,7.40895,-0.871914\nLibertarianism,4.09314,-4.9281\nLibertarian Socialism,-6.46142,-6.11111\nLuxemburgism,-8.57361,-2.37778\nMaoism,-6.26389,8.27885\nMarket Socialism,-3.06439,-3.46591\nMarxism,-8.79722,-0.808333\nMarxism-Leninism,-8.32083,6.84583\nMight Makes Right,10.706,10.4977\nMugabeism,-4.74206,6.59524\nMutualism,-1.15355,-8.58179\nNational-Anarchism,0.399306,-7.82118\nNational Bolshevism,-5.70486,9.04051\nNational Communism,-7.575,7.225\nNational Conservatism,4.8125,4.40625\nNational Liberalism,3.35417,0.145833\nNationalism,2.54167,6.29167\nNazism,0.528549,8.625\nNeoclassical Liberalism,3.33532,-5.8631\nNeoconservatism,6.45648,3.98704\nNeo-Fascism,5.26786,8.72619\nNeoliberalism,4.64259,-0.144444\nNeo-Libertarianism,6.57812,-4.53125\nNeo-Marxism,-5.3125,1.61458\nNight-Watchman State,7.2402,-6.80964\nNineteen Eighty-Four,-2,10.4884\nObjectivism,7.51852,-6.15741\nOrdoliberalism,4.1875,-1.5\nOrthodox Marxism,-8.59028,1.67708\nPaleoconservatism,7.27083,4.77431\nPaleolibertarianism,7.41528,-4.53611\nPaternalistic Conservatism,-1.6,3.25\nPinochetism,8.66071,7.19246\nProgressive Conservatism,2.5,2.5\nProgressivism,-1.39141,-1.03283\nQueer Anarchism,-5.375,-7.75\nRadical Centrism,0.15625,-0.15625\nRainbow Capitalism,5.875,-8.125\nReactionism,7.8125,5.3125\nRight-Libertarianism,6.51736,-3.55903\nRight-Wing Populism,7.1131,4.40476\nSituationist International,-8.40278,-6.83333\nSocial Conservatism,4.375,2.125\nSocial Darwinism,10.706,0.208333\nSocial Democracy,-3.26243,-0.961257\nSocial Gospel,-3.09375,2.28125\nSocialism,-6.09936,2.91453\nSocial Liberalism,-0.00992063,-1.2996\nStalinism,-8.01736,8.83218\nState Capitalism,-0.253472,6.03704\nState Socialism,-5.52778,5.83333\nStatism,-3,3.78125\nStrasserism,-5.21296,8.01852\nSyndicalism,-5.77083,-4.21065\nTechnocracy,-2.33507,5.80729\nTechnoliberalism,1.825,-4.125\nTheocracy,3.65,6.60278\nThird Way,1.26667,1.12083\nTitoism,-4.41358,5.81019\nTotalitarianism,-0.8,8.44444\nTraditionalism,5.30556,5.75\nTraditionalist Conservatism,5.34722,3.77083\nTranshumanism,2.05556,-1.75\nTranshumanists,2.82407,-6.5162\nTrotskyism,-8.4469,1.88399\nVoluntaryism,5.45833,-8.57292\nWelfarism,-2.21181,-1.74306\nWorkers’ Party of Korea,-3.4375,9.375\nXi Jinping Thought,-3.90625,7.1875\nZionism,5.375,3.625\n","ideology_coordinates5.csv":"name,x,y\nAccelerationism,-5.01984,-3.50198\nAgorism,2.27885,-8.59722\nAgrarianism,-5.63889,1.41667\nAnarchism,0.262346,-8.42901\nAnarchism and Religion,-2.18364,-6.24228\nAnarchist Communism,-8.81439,-8.22348\nAnarcho-Capitalism,8.41733,-8.51667\nAnarcho-Pacifism,-2.25,-8.375\nAnarcho-Primitivism,-1.39028,-9.81528\nAnarcho-Syndicalism,-6.13258,-8.84722\nAnti-Authoritarianism,-3.51389,-5.95833\nAnti-Revisionism,-8.98413,7.39881\nAristocracy,4.89583,5.72917\nAuthoritarian Capitalism,8.08025,7.68056\nAuthoritarianism,0.375,5.97917\nBa’athism,-2.53283,7.54167\nBusiness Nationalism,8.3912,7.65046\nCapitalism,7.07562,-0.333333\nCentrism,0,0\nChavismo,-5.61458,5.67708\nChristian Democracy,-1.12963,1.8858\nChristian Libertarianism,7.5,-6.4\nClassical Liberalism,5.76389,-2.36581\nClassical Marxism,-9.07341,-3.13492\nCollectivism,-6.95139,0.585069\nCollectivist Anarchism,-5.37879,-8.29419\nCommunalism,-10.706,0.416667\nCommunism,-7.81944,4.61806\nConservatism,5.23438,3.09201\nConservative Liberalism,5.75,0.95\nConservative Socialism,-5.75,3.625\nConstitutional Monarchy,4.64506,4.45988\nContemporary Anarchism,-3.625,-9.625\nCorporatism,2.75278,4.46944\nCorporatocracy,7.10938,6.11111\nCouncil Communism,-9.20988,-4.19907\nDark Enlightenment,10.25,-1.625\nDemocratic Confederalism,-6.03125,-4.39062\nDemocratic Socialism,-5.84785,-0.926768\nDeng Xiaoping Theory,-1.86343,4.43287\nDistributism,-2.93171,1.4919\nEcofascism,-1.90833,6.53611\nEco-Socialism,-6.63333,-3.76389\nEgoist Anarchism,1.62247,-9.98864\nEsoteric Neo-Nazism,3.625,9.25\nFalangism,0.798611,8.35648\nFascism,3.7328,8.71429\nFeudalism,7.64969,4.73302\nFidelismo,-6.35694,4.63333\nFiscal Conservatism,8.84167,1.55833\nFordism,10.625,8.125\nFourth International — Posadist,-9.77183,3.30357\nGandhism,-5.79167,-4.18849\nGeolibertarianism,1.09105,-6.37963\nGeorgism,0.356481,-5.02199\nGreen Anarchism,-6.22024,-8.4127\nGreen Liberalism,-0.95,-3.125\nGreen Libertarianism,3.125,-4.5\nHindutva,2.08333,6.04167\nHo Chi Minh Thought,-6.47396,3.50868\nHoppeans,7.3125,-8.24306\nHoxhaism,-7.5,8.25\nHuey Long,-2.93651,4.98016\nImperialism,8.66898,7.46528\nIndividualist Anarchism,2.98485,-8.86742\nJuche,-3.3287,9.08218\nKleptocracy,4.0625,2.70833\nLabor Movement,-1.45,1.475\nLaissez-Faire,5.78333,-2.83333\nLeft Communism,-8.84375,-1.1875\nLeft-Libertarianism,-0.573529,-4.69608\nLeft-Wing Nationalism,-3.90586,5.06019\nLeft-Wing Populism,-5.83333,2.35648\nLeninism,-8.37073,3.63355\nLiberal Conservatism,5.78993,2.01562\nLiberal Democracy,-0.969444,-0.252778\nLiberalism,2.4158,-0.432292\nLiberal Socialism,-3.5571,-4.06019\nLibertarian Conservatism,7.40895,-0.871914\nLibertarianism,4.09314,-4.9281\nLibertarian Socialism,-6.46142,-6.11111\nLuxemburgism,-8.57361,-2.37778\nMaoism,-6.26389,8.27885\nMarket Socialism,-3.06439,-3.46591\nMarxism,-8.79722,-0.808333\nMarxism-Leninism,-8.32083,6.84583\nMight Makes Right,10.706,10.4977\nMugabeism,-4.74206,6.59524\nMutualism,-1.15355,-8.58179\nNational-Anarchism,0.399306,-7.82118\nNational Bolshevism,-5.70486,9.04051\nNational Communism,-7.575,7.225\nNational Liberalism,3.35417,0.145833\nNationalism,2.54167,6.29167\nNazism,0.528549,8.625\nNeoclassical Liberalism,3.33532,-5.8631\nNeoconservatism,6.45648,3.98704\nNeo-Fascism,5.26786,8.72619\nNeoliberalism,4.64259,-0.144444\nNeo-Libertarianism,6.57812,-4.53125\nNight-Watchman State,7.2402,-6.80964\nNineteen Eighty-Four,-2,10.4884\nObjectivism,7.51852,-6.15741\nOrthodox Marxism,-8.59028,1.67708\nPaleoconservatism,7.27083,4.77431\nPaleolibertarianism,7.41528,-4.53611\nPaternalistic Conservatism,-1.6,3.25\nPinochetism,8.66071,7.19246\nProgressivism,-1.39141,-1.03283\nQueer Anarchism,-5.375,-7.75\nRainbow Capitalism,5.875,-8.125\nRight-Libertarianism,6.51736,-3.55903\nRight-Wing Populism,7.1131,4.40476\nSituationist International,-8.40278,-6.83333\nSocial Darwinism,10.706,0.208333\nSocial Democracy,-3.26243,-0.961257\nSocialism,-6.09936,2.91453\nSocial Liberalism,-0.00992063,-1.2996\nStalinism,-8.01736,8.83218\nState Capitalism,-0.253472,6.03704\nState Socialism,-5.52778,5.83333\nStrasserism,-5.21296,8.01852\nSyndicalism,-5.77083,-4.21065\nTechnocracy,-2.33507,5.80729\nTechnoliberalism,1.825,-4.125\nTheocracy,3.65,6.60278\nThird Way,1.26667,1.12083\nTitoism,-4.41358,5.81019\nTotalitarianism,-0.8,8.44444\nTraditionalist Conservatism,5.34722,3.77083\nTranshumanism,2.05556,-1.75\nTranshumanists,2.82407,-6.5162\nTrotskyism,-8.4469,1.88399\nVoluntaryism,5.45833,-8.57292\nZionism,5.375,3.625\n","ideology_coordinates6.csv":"name,x,y\nAccelerationism,-5.01984,-3.50198\nAgorism,2.27885,-8.59722\nAnarchism,0.262346,-8.42901\nAnarchism and Religion,-2.18364,-6.24228\nAnarchist Communism,-8.81439,-8.22348\nAnarcho-Capitalism,8.41733,-8.51667\nAnarcho-Primitivism,-1.39028,-9.81528\nAnarcho-Syndicalism,-6.13258,-8.84722\nAnti-Revisionism,-8.98413,7.39881\nAristocracy,4.89583,5.72917\nAuthoritarian Capitalism,8.08025,7.68056\nAuthoritarianism,0.375,5.97917\nBa’athism,-2.53283,7.54167\nBusiness Nationalism,8.3912,7.65046\nCapitalism,7.07562,-0.333333\nCentrism,0,0\nChavismo,-5.61458,5.67708\nChristian Democracy,-1.12963,1.8858\nClassical Liberalism,5.76389,-2.36581\nClassical Marxism,-9.07341,-3.13492\nCollectivism,-6.95139,0.585069\nCollectivist Anarchism,-5.37879,-8.29419\nCommunalism,-10.706,0.416667\nCommunism,-7.81944,4.61806\nConservatism,5.23438,3.09201\nConstitutional Monarchy,4.64506,4.45988\nCorporatocracy,7.10938,6.11111\nCouncil Communism,-9.20988,-4.19907\nDemocratic Confederalism,-6.03125,-4.39062\nDemocratic Socialism,-5.84785,-0.926768\nDeng Xiaoping Theory,-1.86343,4.43287\nDistributism,-2.93171,1.4919\nEgoist Anarchism,1.62247,-9.98864\nFalangism,0.798611,8.35648\nFascism,3.7328,8.71429\nFeudalism,7.64969,4.73302\nFidelismo,-6.35694,4.63333\nFourth International — Posadist,-9.77183,3.30357\nGandhism,-5.79167,-4.18849\nGeolibertarianism,1.09105,-6.37963\nGeorgism,0.356481,-5.02199\nGreen Anarchism,-6.22024,-8.4127\nHindutva,2.08333,6.04167\nHo Chi Minh Thought,-6.47396,3.50868\nHoppeans,7.3125,-8.24306\nHuey Long,-2.93651,4.98016\nImperialism,8.66898,7.46528\nIndividualist Anarchism,2.98485,-8.86742\nJuche,-3.3287,9.08218\nKleptocracy,4.0625,2.70833\nLeft Communism,-8.84375,-1.1875\nLeft-Libertarianism,-0.573529,-4.69608\nLeft-Wing Nationalism,-3.90586,5.06019\nLeft-Wing Populism,-5.83333,2.35648\nLeninism,-8.37073,3.63355\nLiberal Conservatism,5.78993,2.01562\nLiberalism,2.4158,-0.432292\nLiberal Socialism,-3.5571,-4.06019\nLibertarian Conservatism,7.40895,-0.871914\nLibertarianism,4.09314,-4.9281\nLibertarian Socialism,-6.46142,-6.11111\nLuxemburgism,-8.57361,-2.37778\nMaoism,-6.26389,8.27885\nMarket Socialism,-3.06439,-3.46591\nMarxism-Leninism,-8.32083,6.84583\nMight Makes Right,10.706,10.4977\nMugabeism,-4.74206,6.59524\nMutualism,-1.15355,-8.58179\nNational-Anarchism,0.399306,-7.82118\nNational Bolshevism,-5.70486,9.04051\nNational Liberalism,3.35417,0.145833\nNationalism,2.54167,6.29167\nNazism,0.528549,8.625\nNeoclassical Liberalism,3.33532,-5.8631\nNeoconservatism,6.45648,3.98704\nNeo-Fascism,5.26786,8.72619\nNeoliberalism,4.64259,-0.144444\nNeo-Libertarianism,6.57812,-4.53125\nNight-Watchman State,7.2402,-6.80964\nNineteen Eighty-Four,-2,10.4884\nObjectivism,7.51852,-6.15741\nOrthodox Marxism,-8.59028,1.67708\nPaleoconservatism,7.27083,4.77431\nPaleolibertarianism,7.41528,-4.53611\nPinochetism,8.66071,7.19246\nProgressivism,-1.39141,-1.03283\nRight-Libertarianism,6.51736,-3.55903\nRight-Wing Populism,7.1131,4.40476\nSocial Darwinism,10.706,0.208333\nSocial Democracy,-3.26243,-0.961257\nSocialism,-6.09936,2.91453\nSocial Liberalism,-0.00992063,-1.2996\nStalinism,-8.01736,8.83218\nState Capitalism,-0.253472,6.03704\nState Socialism,-5.52778,5.83333\nStrasserism,-5.21296,8.01852\nSyndicalism,-5.77083,-4.21065\nTechnocracy,-2.33507,5.80729\nTheocracy,3.65,6.60278\nThird Way,1.26667,1.12083\nTitoism,-4.41358,5.81019\nTraditionalist Conservatism,5.34722,3.77083\nTranshumanists,2.82407,-6.5162\nTrotskyism,-8.4469,1.88399\nVoluntaryism,5.45833,-8.57292\n","ideology_coordinates7.csv":"name,x,y\nAccelerationism,-5.01984,-3.50198\nAgorism,2.27885,-8.59722\nAnarchism,0.262346,-8.42901\nAnarchism and Religion,-2.18364,-6.24228\nAnarchist Communism,-8.81439,-8.22348\nAnarcho-Capitalism,8.41733,-8.51667\nAnarcho-Primitivism,-1.39028,-9.81528\nAnarcho-Syndicalism,-6.13258,-8.84722\nAnti-Revisionism,-8.98413,7.39881\nAuthoritarian Capitalism,8.08025,7.68056\nAuthoritarianism,0.375,5.97917\nBa’athism,-2.53283,7.54167\nCapitalism,7.07562,-0.333333\nChavismo,-5.61458,5.67708\nChristian Democracy,-1.12963,1.8858\nClassical Liberalism,5.76389,-2.36581\nClassical Marxism,-9.07341,-3.13492\nCollectivism,-6.95139,0.585069\nCollectivist Anarchism,-5.37879,-8.29419\nConservatism,5.23438,3.09201\nConstitutional Monarchy,4.64506,4.45988\nCorporatocracy,7.10938,6.11111\nCouncil Communism,-9.20988,-4.19907\nDemocratic Confederalism,-6.03125,-4.39062\nDemocratic Socialism,-5.84785,-0.926768\nDistributism,-2.93171,1.4919\nEgoist Anarchism,1.62247,-9.98864\nFascism,3.7328,8.71429\nFeudalism,7.64969,4.73302\nFidelismo,-6.35694,4.63333\nFourth International — Posadist,-9.77183,3.30357\nGandhism,-5.79167,-4.18849\nGeolibertarianism,1.09105,-6.37963\nGeorgism,0.356481,-5.02199\nGreen Anarchism,-6.22024,-8.4127\nHo Chi Minh Thought,-6.47396,3.50868\nHoppeans,7.3125,-8.24306\nHuey Long,-2.93651,4.98016\nIndividualist Anarchism,2.98485,-8.86742\nJuche,-3.3287,9.08218\nLeft Communism,-8.84375,-1.1875\nLeft-Libertarianism,-0.573529,-4.69608\nLeft-Wing Nationalism,-3.90586,5.06019\nLeft-Wing Populism,-5.83333,2.35648\nLeninism,-8.37073,3.63355\nLiberal Conservatism,5.78993,2.01562\nLiberalism,2.4158,-0.432292\nLiberal Socialism,-3.5571,-4.06019\nLibertarian Conservatism,7.40895,-0.871914\nLibertarianism,4.09314,-4.9281\nLibertarian Socialism,-6.46142,-6.11111\nLuxemburgism,-8.57361,-2.37778\nMaoism,-6.26389,8.27885\nMarket Socialism,-3.06439,-3.46591\nMarxism-Leninism,-8.32083,6.84583\nMugabeism,-4.74206,6.59524\nMutualism,-1.15355,-8.58179\nNational-Anarchism,0.399306,-7.82118\nNational Bolshevism,-5.70486,9.04051\nNazism,0.528549,8.625\nNeoclassical Liberalism,3.33532,-5.8631\nNeoconservatism,6.45648,3.98704\nNeo-Fascism,5.26786,8.72619\nNeoliberalism,4.64259,-0.144444\nNeo-Libertarianism,6.57812,-4.53125\nNight-Watchman State,7.2402,-6.80964\nNineteen Eighty-Four,-2,10.4884\nObjectivism,7.51852,-6.15741\nOrthodox Marxism,-8.59028,1.67708\nPaleoconservatism,7.27083,4.77431\nPaleolibertarianism,7.41528,-4.53611\nPinochetism,8.66071,7.19246\nProgressivism,-1.39141,-1.03283\nRight-Libertarianism,6.51736,-3.55903\nRight-Wing Populism,7.1131,4.40476\nSocial Democracy,-3.26243,-0.961257\nSocialism,-6.09936,2.91453\nSocial Liberalism,-0.00992063,-1.2996\nStalinism,-8.01736,8.83218\nState Capitalism,-0.253472,6.03704\nState Socialism,-5.52778,5.83333\nStrasserism,-5.21296,8.01852\nSyndicalism,-5.77083,-4.21065\nTechnocracy,-2.33507,5.80729\nTheocracy,3.65,6.60278\nThird Way,1.26667,1.12083\nTitoism,-4.41358,5.81019\nTrotskyism,-8.4469,1.88399\nVoluntaryism,5.45833,-8.57292\n","ideology_coordinates8.csv":"name,x,y\nAgorism,2.27885,-8.59722\nAnarchism,0.262346,-8.42901\nAnarchism and Religion,-2.18364,-6.24228\nAnarchist Communism,-8.81439,-8.22348\nAnarcho-Capitalism,8.41733,-8.51667\nAnarcho-Primitivism,-1.39028,-9.81528\nAnarcho-Syndicalism,-6.13258,-8.84722\nAuthoritarian Capitalism,8.08025,7.68056\nAuthoritarianism,0.375,5.97917\nBa’athism,-2.53283,7.54167\nCapitalism,7.07562,-0.333333\nChavismo,-5.61458,5.67708\nChristian Democracy,-1.12963,1.8858\nClassical Liberalism,5.76389,-2.36581\nCollectivism,-6.95139,0.585069\nCollectivist Anarchism,-5.37879,-8.29419\nConservatism,5.23438,3.09201\nConstitutional Monarchy,4.64506,4.45988\nCorporatocracy,7.10938,6.11111\nCouncil Communism,-9.20988,-4.19907\nDemocratic Confederalism,-6.03125,-4.39062\nDemocratic Socialism,-5.84785,-0.926768\nDistributism,-2.93171,1.4919\nEgoist Anarchism,1.62247,-9.98864\nFascism,3.7328,8.71429\nFeudalism,7.64969,4.73302\nFidelismo,-6.35694,4.63333\nGeolibertarianism,1.09105,-6.37963\nGeorgism,0.356481,-5.02199\nHo Chi Minh Thought,-6.47396,3.50868\nHoppeans,7.3125,-8.24306\nIndividualist Anarchism,2.98485,-8.86742\nJuche,-3.3287,9.08218\nLeft Communism,-8.84375,-1.1875\nLeft-Libertarianism,-0.573529,-4.69608\nLeft-Wing Nationalism,-3.90586,5.06019\nLeft-Wing Populism,-5.83333,2.35648\nLeninism,-8.37073,3.63355\nLiberal Conservatism,5.78993,2.01562\nLiberalism,2.4158,-0.432292\nLiberal Socialism,-3.5571,-4.06019\nLibertarian Conservatism,7.40895,-0.871914\nLibertarianism,4.09314,-4.9281\nLibertarian Socialism,-6.46142,-6.11111\nLuxemburgism,-8.57361,-2.37778\nMaoism,-6.26389,8.27885\nMarket Socialism,-3.06439,-3.46591\nMarxism-Leninism,-8.32083,6.84583\nMutualism,-1.15355,-8.58179\nNational-Anarchism,0.399306,-7.82118\nNational Bolshevism,-5.70486,9.04051\nNazism,0.528549,8.625\nNeoconservatism,6.45648,3.98704\nNeoliberalism,4.64259,-0.144444\nNeo-Libertarianism,6.57812,-4.53125\nNight-Watchman State,7.2402,-6.80964\nNineteen Eighty-Four,-2,10.4884\nObjectivism,7.51852,-6.15741\nOrthodox Marxism,-8.59028,1.67708\nPaleoconservatism,7.27083,4.77431\nPaleolibertarianism,7.41528,-4.53611\nProgressivism,-1.39141,-1.03283\nRight-Libertarianism,6.51736,-3.55903\nSocial Democracy,-3.26243,-0.961257\nSocialism,-6.09936,2.91453\nSocial Liberalism,-0.00992063,-1.2996\nStalinism,-8.01736,8.83218\nState Capitalism,-0.253472,6.03704\nState Socialism,-5.52778,5.83333\nStrasserism,-5.21296,8.01852\nSyndicalism,-5.77083,-4.21065\nTechnocracy,-2.33507,5.80729\nTheocracy,3.65,6.60278\nThird Way,1.26667,1.12083\nTitoism,-4.41358,5.81019\nTrotskyism,-8.4469,1.88399\nVoluntaryism,5.45833,-8.57292\n","ideology_coordinates9.csv":"name,x,y\nAgorism,2.27885,-8.59722\nAnarchism,0.262346,-8.42901\nAnarchism and Religion,-2.18364,-6.24228\nAnarchist Communism,-8.81439,-8.22348\nAnarcho-Capitalism,8.41733,-8.51667\nAnarcho-Primitivism,-1.39028,-9.81528\nAnarcho-Syndicalism,-6.13258,-8.84722\nAuthoritarian Capitalism,8.08025,7.68056\nBa’athism,-2.53283,7.54167\nCapitalism,7.07562,-0.333333\nChristian Democracy,-1.12963,1.8858\nClassical Liberalism,5.76389,-2.36581\nCollectivist Anarchism,-5.37879,-8.29419\nConservatism,5.23438,3.09201\nConstitutional Monarchy,4.64506,4.45988\nCouncil Communism,-9.20988,-4.19907\nDemocratic Socialism,-5.84785,-0.926768\nDistributism,-2.93171,1.4919\nEgoist Anarchism,1.62247,-9.98864\nFascism,3.7328,8.71429\nFeudalism,7.64969,4.73302\nFidelismo,-6.35694,4.63333\nGeolibertarianism,1.09105,-6.37963\nGeorgism,0.356481,-5.02199\nHoppeans,7.3125,-8.24306\nIndividualist Anarchism,2.98485,-8.86742\nJuche,-3.3287,9.08218\nLeft-Libertarianism,-0.573529,-4.69608\nLeft-Wing Nationalism,-3.90586,5.06019\nLeft-Wing Populism,-5.83333,2.35648\nLeninism,-8.37073,3.63355\nLiberalism,2.4158,-0.432292\nLiberal Socialism,-3.5571,-4.06019\nLibertarian Conservatism,7.40895,-0.871914\nLibertarianism,4.09314,-4.9281\nLibertarian Socialism,-6.46142,-6.11111\nLuxemburgism,-8.57361,-2.37778\nMaoism,-6.26389,8.27885\nMarket Socialism,-3.06439,-3.46591\nMarxism-Leninism,-8.32083,6.84583\nMutualism,-1.15355,-8.58179\nNational Bolshevism,-5.70486,9.04051\nNazism,0.528549,8.625\nNeoconservatism,6.45648,3.98704\nNeoliberalism,4.64259,-0.144444\nNight-Watchman State,7.2402,-6.80964\nNineteen Eighty-Four,-2,10.4884\nObjectivism,7.51852,-6.15741\nPaleolibertarianism,7.41528,-4.53611\nProgressivism,-1.39141,-1.03283\nSocial Democracy,-3.26243,-0.961257\nSocialism,-6.09936,2.91453\nSocial Liberalism,-0.00992063,-1.2996\nStalinism,-8.01736,8.83218\nState Capitalism,-0.253472,6.03704\nStrasserism,-5.21296,8.01852\nSyndicalism,-5.77083,-4.21065\nTheocracy,3.65,6.60278\nThird Way,1.26667,1.12083\nTitoism,-4.41358,5.81019\nTrotskyism,-8.4469,1.88399\n"}</script>
   <script>
     const APP_TITLE = "New Political Compass";
     const DATASETS = [
@@ -635,7 +771,16 @@
     const WORLD_MIN = GRAPH_MIN;
     const WORLD_MAX = GRAPH_MAX;
     const MIN_VIEW_SPAN = 0.75;
-    const SEARCH_FOCUS_SPAN = 6;
+    const SEARCH_FOCUS_SPAN = 12.5;
+    const OVERTON_MAX_RADIUS = 5;
+    const RING_BANDS = [
+      { label: "Policy", rule: "r < 1", color: "#39d2c0" },
+      { label: "Popular", rule: "1 ≤ r < 2", color: "#8bd671" },
+      { label: "Sensible", rule: "2 ≤ r < 3", color: "#66b7ed" },
+      { label: "Acceptable", rule: "3 ≤ r < 4", color: "#edc36b" },
+      { label: "Radical", rule: "4 ≤ r ≤ 5", color: "#f49375" },
+      { label: "Unthinkable", rule: "r > 5", color: "#aaaaaa" },
+    ];
     const MAX_SEARCH_RESULTS = 15;
     const PLOT_SIZE = 1000;
     const POINT_RADIUS = 3.4;
@@ -668,7 +813,15 @@
       warnings: [],
       categoryWarnings: [],
       selectedIndex: null,
+      pinnedCenter: null,
+      pinnedLabel: null,
+      showOverton: true,
+      detailsOpen: false,
       matches: [],
+      matchCount: 0,
+      labelBaseTransform: d3.zoomIdentity,
+      navRefineTimer: null,
+      detailChangeTimer: null,
       transform: d3.zoomIdentity,
       coordIndex: new Map(),
       categoryCoordKeys: new Set(),
@@ -693,6 +846,16 @@
       showExtremes: document.getElementById("show-extremes"),
       colorfulCategories: document.getElementById("colorful-categories"),
       search: document.getElementById("search"),
+      showOverton: document.getElementById("show-overton"),
+      go: document.getElementById("go"),
+      detailsToggle: document.getElementById("details-toggle"),
+      detailsArrow: document.getElementById("details-arrow"),
+      detailsPanel: document.getElementById("details-panel"),
+      body: document.getElementById("main-body"),
+      centerName: document.getElementById("center-name"),
+      centerCoords: document.getElementById("center-coords"),
+      bands: document.getElementById("bands"),
+      searchFeedback: document.getElementById("search-feedback"),
       clear: document.getElementById("clear"),
       reset: document.getElementById("reset"),
       status: document.getElementById("status"),
@@ -709,6 +872,7 @@
     const gridLayer = root.append("g").attr("class", "grid-layer");
     const cellLayer = root.append("g").attr("class", "cell-layer");
     const categoryCellLayer = root.append("g").attr("class", "category-cell-layer");
+    const ringLayer = root.append("g").attr("class", "ring-layer");
     const categoryPointLayer = root.append("g").attr("class", "category-point-layer");
     const pointLayer = root.append("g").attr("class", "point-layer");
     const categoryLabelLayer = elements.svg.append("g").attr("class", "category-label-layer");
@@ -722,12 +886,14 @@
 
     const zoom = d3.zoom()
       .scaleExtent([1, 100])
-      .translateExtent([[0, 0], [PLOT_SIZE, PLOT_SIZE]])
+      .translateExtent([[-300, -300], [PLOT_SIZE + 300, PLOT_SIZE + 300]])
       .extent([[0, 0], [PLOT_SIZE, PLOT_SIZE]])
       .filter((event) => !event.ctrlKey || event.type === "wheel")
       .on("zoom", (event) => {
         state.transform = event.transform;
-        applyTransform();
+        // Only transform existing SVG nodes during interaction; do not reflow labels.
+        previewTransform();
+        scheduleNavigationRefine();
       });
 
     elements.svg.call(zoom);
@@ -1164,7 +1330,8 @@
       const datasetLabel = dataset ? dataset.label : "Dataset";
       const skippedCount = state.warnings.length + state.categoryWarnings.length;
       const warningText = skippedCount ? ` | ${skippedCount} skipped row(s)` : "";
-      elements.status.textContent = `${datasetLabel} | ${state.points.length} ideologies | ${state.categoryPoints.length} categories${warningText}`;
+      const centerText = state.pinnedCenter ? ` | Center (${formatNumber(state.pinnedCenter[0])}, ${formatNumber(state.pinnedCenter[1])})` : "";
+      elements.status.textContent = `${datasetLabel} | ${state.points.length} ideologies | ${state.categoryPoints.length} categories${warningText}${centerText}`;
     }
 
     function drawGrid() {
@@ -1579,67 +1746,166 @@
       return lines;
     }
 
+
+    function parseCoordinateQuery(raw) {
+      let text = String(raw).trim();
+      if (text.startsWith("(") && text.endsWith(")")) text = text.slice(1, -1).trim();
+      const parts = text.split(",");
+      if (parts.length !== 2 || parts.some((part) => !part.trim())) return null;
+      const values = parts.map((part) => Number(part.trim()));
+      return values.every(Number.isFinite) ? values : null;
+    }
+
+    function bandIndex(r) {
+      if (r > 5) return 5;
+      if (r === 5) return 4;
+      return Math.min(Math.floor(r), 4);
+    }
+
+    function overtonCounts() {
+      const counts = new Array(RING_BANDS.length).fill(0);
+      if (!state.pinnedCenter) return counts;
+      for (const point of state.points) {
+        if (!isInGraphBounds(point)) continue;
+        const d = Math.hypot(point.x - state.pinnedCenter[0], point.y - state.pinnedCenter[1]);
+        counts[bandIndex(d)] += 1;
+      }
+      return counts;
+    }
+
+    function drawOvertonRings() {
+      ringLayer.selectAll("*").remove();
+      if (!state.showOverton || !state.pinnedCenter) return;
+      const [cx, cy] = state.pinnedCenter;
+      const px = xScale(cx), py = yScale(cy);
+      const unit = xScale(1) - xScale(0);
+      // Outer-to-inner keeps fills in their own visible annular bands.
+      for (let radius = 5; radius >= 1; radius -= 1) {
+        const color = RING_BANDS[radius - 1].color;
+        ringLayer.append("circle").attr("class", "ring-fill")
+          .attr("cx", px).attr("cy", py).attr("r", radius * unit).attr("fill", color);
+      }
+      for (let radius = 1; radius <= 5; radius += 1) {
+        ringLayer.append("circle").attr("class", "ring-outline")
+          .attr("cx", px).attr("cy", py).attr("r", radius * unit)
+          .attr("stroke", RING_BANDS[radius - 1].color);
+      }
+    }
+
+    function updateProximityPanel() {
+      elements.bands.replaceChildren();
+      const center = state.pinnedCenter;
+      elements.centerName.textContent = center ? (state.pinnedLabel || "Custom coordinates") : "No point selected";
+      elements.centerCoords.textContent = center
+        ? `(${formatNumber(center[0])}, ${formatNumber(center[1])})`
+        : "Select an ideology or enter x,y to show proximity rings.";
+      const counts = center ? overtonCounts() : RING_BANDS.map(() => "—");
+      RING_BANDS.forEach((band, index) => {
+        const row = document.createElement("div"); row.className = "band-row";
+        const dot = document.createElement("span"); dot.className = "band-dot"; dot.style.backgroundColor = band.color;
+        const number = document.createElement("span"); number.className = "band-count"; number.textContent = counts[index];
+        const copy = document.createElement("div"); copy.className = "band-copy";
+        const title = document.createElement("div"); title.textContent = band.label;
+        const rule = document.createElement("div"); rule.className = "band-rule"; rule.textContent = band.rule;
+        copy.append(title, rule); row.append(dot, number, copy); elements.bands.append(row);
+      });
+    }
+
+    function resolvePinnedSelection() {
+      state.selectedIndex = null;
+      if (!state.pinnedCenter || !state.pinnedLabel || state.pinnedLabel === "Custom coordinates") return;
+      const wantedName = normalizeLabelKey(state.pinnedLabel);
+      state.selectedIndex = state.points.findIndex((point) =>
+        normalizeLabelKey(point.name) === wantedName
+        && Math.abs(point.x - state.pinnedCenter[0]) < 1e-8
+        && Math.abs(point.y - state.pinnedCenter[1]) < 1e-8
+      );
+      if (state.selectedIndex < 0) state.selectedIndex = null;
+    }
+
+    function setFeedback(text, isError = false) {
+      elements.searchFeedback.textContent = text;
+      elements.searchFeedback.classList.toggle("error", isError);
+    }
+
+    function setDetailsOpen(open) {
+      state.detailsOpen = Boolean(open);
+      elements.detailsPanel.hidden = !open;
+      elements.body.classList.toggle("with-details", open);
+      elements.detailsToggle.setAttribute("aria-pressed", String(Boolean(open)));
+      elements.detailsToggle.setAttribute("aria-expanded", String(Boolean(open)));
+      elements.detailsArrow.textContent = open ? "◂" : "▸";
+      // The SVG's viewBox remains fixed, so resizing the stage only requires label reflow.
+      requestAnimationFrame(() => scheduleNavigationRefine(30));
+    }
+
+    // Reuse the already-drawn data layers during pan/zoom, like Python's preview mode.
+    function previewTransform() {
+      root.attr("transform", state.transform);
+      const before = state.labelBaseTransform;
+      const now = state.transform;
+      const ratio = now.k / before.k;
+      const dx = now.x - before.x * ratio;
+      const dy = now.y - before.y * ratio;
+      const relative = `translate(${dx},${dy}) scale(${ratio})`;
+      categoryLabelLayer.attr("transform", relative);
+      labelLayer.attr("transform", relative);
+      selectedLayer.attr("transform", relative);
+    }
+
+    function scheduleNavigationRefine(delay = 125) {
+      clearTimeout(state.navRefineTimer);
+      state.navRefineTimer = setTimeout(() => {
+        state.navRefineTimer = null;
+        applyTransform();
+      }, delay);
+    }
+
     function drawSelected() {
       selectedLayer.selectAll("*").remove();
-      if (state.selectedIndex === null) {
-        return;
-      }
-
-      const point = state.points[state.selectedIndex];
-      if (!isInGraphBounds(point) || !pointIsVisible(point)) {
-        return;
-      }
-
-      const px = state.transform.applyX(xScale(point.x));
-      const py = state.transform.applyY(yScale(point.y));
+      const center = state.pinnedCenter;
+      if (!center) return;
+      const px = state.transform.applyX(xScale(center[0]));
+      const py = state.transform.applyY(yScale(center[1]));
+      if (px < -30 || px > PLOT_SIZE + 30 || py < -30 || py > PLOT_SIZE + 30) return;
       const selectedGroup = selectedLayer.append("g").attr("class", "selected");
-
-      selectedGroup.append("circle")
-        .attr("class", "selected-ring")
-        .attr("r", 14)
-        .attr("cx", px)
-        .attr("cy", py);
-
-      selectedGroup.append("circle")
-        .attr("class", "selected-dot")
-        .attr("r", 5.8)
-        .attr("cx", px)
-        .attr("cy", py);
-
-      const tooltip = selectedGroup.append("g")
-        .attr("transform", `translate(${Math.min(px + 14, PLOT_SIZE - 260)}, ${Math.max(py - 4, 16)})`);
-
-      const lines = pointInfo(state.selectedIndex);
+      selectedGroup.append("circle").attr("class", "selected-ring")
+        .attr("r", 13).attr("cx", px).attr("cy", py);
+      selectedGroup.append("circle").attr("class", "selected-dot")
+        .attr("r", 5).attr("cx", px).attr("cy", py);
+      const lines = [state.pinnedLabel || "Custom coordinates", `x: ${formatNumber(center[0])}`, `y: ${formatNumber(center[1])}`];
+      if (state.selectedIndex !== null) {
+        const point = state.points[state.selectedIndex];
+        if (point.group) lines.push(`group: ${point.group}`);
+      }
       const maxChars = Math.max(...lines.map((line) => line.length));
-      const boxWidth = Math.min(260, Math.max(110, maxChars * 5.3 + 18));
-      const boxHeight = lines.length * 13 + 14;
-
-      tooltip.append("rect")
-        .attr("class", "tooltip-box")
-        .attr("rx", 4)
-        .attr("ry", 4)
-        .attr("x", 0)
-        .attr("y", 0)
-        .attr("width", boxWidth)
-        .attr("height", boxHeight);
-
-      tooltip.selectAll("text")
-        .data(lines)
-        .join("text")
-        .attr("class", "tooltip-text")
-        .attr("x", 8)
-        .attr("y", (_line, lineIndex) => 16 + lineIndex * 13)
-        .text((line) => line);
+      const width = Math.min(240, Math.max(110, maxChars * 5.2 + 20));
+      const height = lines.length * 14 + 13;
+      let x = Math.min(px + 15, PLOT_SIZE - width - 4);
+      let y = py - 6;
+      if (y + height > PLOT_SIZE) y = PLOT_SIZE - height - 3;
+      if (y < 3) y = 3;
+      const tooltip = selectedGroup.append("g").attr("transform", `translate(${x},${y})`);
+      tooltip.append("rect").attr("class", "tooltip-box")
+        .attr("rx", 5).attr("ry", 5).attr("width", width).attr("height", height);
+      tooltip.selectAll("text").data(lines).join("text").attr("class", "tooltip-text")
+        .attr("x", 9).attr("y", (_line, i) => 17 + i * 14).text((line) => line);
     }
 
     function drawAll() {
       drawGrid();
       drawVoronoi();
+      drawOvertonRings();
       applyTransform();
+      updateProximityPanel();
     }
 
     function applyTransform() {
       root.attr("transform", state.transform);
+      state.labelBaseTransform = state.transform;
+      categoryLabelLayer.attr("transform", null);
+      labelLayer.attr("transform", null);
+      selectedLayer.attr("transform", null);
       const visibleIdeologyPoints = visibleIdeologyPointsByPriority();
       const categoryLabels = drawCategoryLabels();
       drawCategoryPoints(categoryLabels.points);
@@ -1649,33 +1915,23 @@
     }
 
     function renderMatches() {
-      elements.matches.innerHTML = "";
-
-      const query = elements.search.value.trim().toLowerCase();
-      if (!query) {
-        const empty = document.createElement("div");
-        empty.className = "empty";
-        empty.textContent = "Type to search by point name or group.";
-        elements.matches.append(empty);
-        return;
-      }
-
-      if (!state.matches.length) {
-        const empty = document.createElement("div");
-        empty.className = "empty";
-        empty.textContent = "No matches.";
-        elements.matches.append(empty);
-        return;
-      }
-
+      elements.matches.replaceChildren();
+      const query = elements.search.value.trim();
+      const show = Boolean(query && !parseCoordinateQuery(query) && state.matches.length);
+      elements.matches.hidden = !show;
+      elements.search.setAttribute("aria-expanded", String(show));
+      if (!show) return;
       state.matches.forEach((index) => {
         const point = state.points[index];
         const button = document.createElement("button");
         button.type = "button";
         button.className = `match${index === state.selectedIndex ? " active" : ""}`;
-        button.innerHTML = `<span class="match-name"></span><span class="match-meta"></span>`;
-        button.querySelector(".match-name").textContent = point.name;
-        button.querySelector(".match-meta").textContent = `(${formatNumber(point.x)}, ${formatNumber(point.y)})${point.group ? ` - ${point.group}` : ""}`;
+        button.setAttribute("role", "option");
+        button.setAttribute("aria-selected", String(index === state.selectedIndex));
+        const name = document.createElement("span"); name.className = "match-name"; name.textContent = point.name;
+        const meta = document.createElement("span"); meta.className = "match-meta";
+        meta.textContent = `(${formatNumber(point.x)}, ${formatNumber(point.y)})${point.group ? ` — ${point.group}` : ""}`;
+        button.append(name, meta);
         button.addEventListener("click", () => selectPoint(index, true));
         elements.matches.append(button);
       });
@@ -1693,162 +1949,220 @@
       state.categoryPoints = dataset.categoryPoints;
       state.warnings = dataset.warnings;
       state.categoryWarnings = dataset.categoryWarnings;
-      state.selectedIndex = null;
       state.matches = [];
+      resolvePinnedSelection();
       updateViewBounds();
       buildCoordIndex();
     }
 
     function switchDataset(index) {
-      if (index === state.activeDatasetIndex) {
-        return;
-      }
-
-      const currentTransform = clampTranslate(d3.zoomTransform(elements.svg.node()));
+      if (index === state.activeDatasetIndex || !state.datasets[index]) return;
+      const current = d3.zoomTransform(elements.svg.node());
       applyDataset(index);
-      state.transform = currentTransform;
-      elements.search.value = "";
+      state.transform = current;
       renderDetailSlider();
       updateStatus();
-      renderMatches();
-      elements.svg.call(zoom.transform, currentTransform);
+      updateSearch();
+      elements.matches.hidden = true;
+      elements.search.setAttribute("aria-expanded", "false");
       drawAll();
+      setFeedback(state.pinnedCenter
+        ? `Point preserved at (${formatNumber(state.pinnedCenter[0])}, ${formatNumber(state.pinnedCenter[1])}).`
+        : "");
     }
 
     function applyBoundsMode(showExtremes) {
       state.showExtremes = showExtremes;
-      state.selectedIndex = null;
-      state.matches = [];
-      state.transform = d3.zoomIdentity;
-      elements.search.value = "";
       updateViewBounds();
+      resolvePinnedSelection();
       updateStatus();
-      renderMatches();
-      elements.svg.call(zoom.transform, d3.zoomIdentity);
+      updateSearch();
       drawAll();
     }
 
     function updateSearch() {
-      const query = elements.search.value.trim().toLowerCase();
-      if (!query) {
-        state.matches = [];
-        if (state.selectedIndex !== null) {
-          state.selectedIndex = null;
-          drawAll();
-          renderMatches();
-        } else {
-          renderMatches();
-        }
+      const query = elements.search.value.trim();
+      state.matches = [];
+      if (!query) { renderMatches(); return; }
+      const coords = parseCoordinateQuery(query);
+      if (coords) {
+        setFeedback(`Coordinates (${formatNumber(coords[0])}, ${formatNumber(coords[1])}) ready — Enter or Go.`, false);
+        renderMatches();
         return;
       }
-
-      state.matches = state.points
-        .map((point, index) => ({ point, index }))
-        .filter(({ point }) => point.name.toLowerCase().includes(query) || (point.group && point.group.toLowerCase().includes(query)))
-        .slice(0, MAX_SEARCH_RESULTS)
-        .map(({ index }) => index);
-
+      const q = query.toLowerCase();
+      const matches = state.points.map((point, index) => ({ point, index }))
+        .filter(({ point }) => point.name.toLowerCase().includes(q) || (point.group && point.group.toLowerCase().includes(q)));
+      matches.sort((a,b) => {
+        const key = (item) => [item.point.name.toLowerCase() !== q ? 1 : 0,
+          item.point.name.toLowerCase().startsWith(q) ? 0 : 1,
+          item.point.name.toLowerCase()];
+        return compareKeys(key(a), key(b));
+      });
+      state.matchCount = matches.length;
+      state.matches = matches.slice(0, MAX_SEARCH_RESULTS).map(({index}) => index);
+      setFeedback(matches.length ? `${matches.length} match${matches.length === 1 ? "" : "es"} · Enter selects first`
+        : "No matches at this detail level. Try another level or x,y.", !matches.length);
       renderMatches();
     }
 
     function clampTranslate(transform) {
-      const tx = Math.min(0, Math.max(PLOT_SIZE - PLOT_SIZE * transform.k, transform.x));
-      const ty = Math.min(0, Math.max(PLOT_SIZE - PLOT_SIZE * transform.k, transform.y));
-      return d3.zoomIdentity.translate(tx, ty).scale(transform.k);
+      // Extend virtual bounds so rings can be viewed around a pin near ±10.
+      const min = PLOT_SIZE - (PLOT_SIZE + 300) * transform.k;
+      const max = 300 * transform.k;
+      const x = clamp(transform.x, min, max);
+      const y = clamp(transform.y, min, max);
+      return d3.zoomIdentity.translate(x, y).scale(transform.k);
     }
 
     function focusPoint(point) {
-      const viewSpan = Math.min(
-        state.viewBounds.maxX - state.viewBounds.minX,
-        state.viewBounds.maxY - state.viewBounds.minY
-      );
-      const targetScale = viewSpan / SEARCH_FOCUS_SPAN;
-      const px = xScale(point.x);
-      const py = yScale(point.y);
+      const viewSpan = Math.min(state.viewBounds.maxX - state.viewBounds.minX,
+        state.viewBounds.maxY - state.viewBounds.minY);
+      const targetSpan = state.showOverton ? SEARCH_FOCUS_SPAN : 6;
+      const targetScale = Math.max(1, viewSpan / targetSpan);
+      const px = xScale(point.x), py = yScale(point.y);
       const transform = d3.zoomIdentity
         .translate(PLOT_SIZE / 2 - px * targetScale, PLOT_SIZE / 2 - py * targetScale)
         .scale(targetScale);
-      elements.svg.transition().duration(220).call(zoom.transform, clampTranslate(transform));
+      elements.svg.interrupt().transition().duration(200)
+        .call(zoom.transform, clampTranslate(transform));
     }
 
     function selectPoint(index, focus) {
-      if (index < 0 || index >= state.points.length) {
+      if (index < 0 || index >= state.points.length) return;
+      const point = state.points[index];
+      if (!isInGraphBounds(point) && !state.showExtremes) {
+        state.showExtremes = true;
+        elements.showExtremes.checked = true;
+        updateViewBounds();
+      }
+      state.pinnedCenter = [point.x, point.y];
+      state.pinnedLabel = point.name;
+      state.selectedIndex = index;
+      elements.search.value = point.name;
+      state.matches = [];
+      renderMatches();
+      setFeedback(`Selected: ${point.name}`);
+      updateStatus();
+      drawAll();
+      if (focus) focusPoint(point);
+    }
+
+    function goToSearch() {
+      const query = elements.search.value.trim();
+      const coords = parseCoordinateQuery(query);
+      if (coords) {
+        if (coords.some((c) => c < WORLD_MIN || c > WORLD_MAX)) {
+          setFeedback(`Coordinates must be between ${WORLD_MIN} and ${WORLD_MAX} on both axes.`, true);
+          return;
+        }
+        if (!state.showExtremes && coords.some((c) => c < COMPASS_MIN || c > COMPASS_MAX)) {
+          state.showExtremes = true;
+          elements.showExtremes.checked = true;
+          updateViewBounds();
+        }
+        state.pinnedCenter = coords;
+        state.pinnedLabel = "Custom coordinates";
+        state.selectedIndex = null;
+        state.matches = [];
+        renderMatches();
+        updateStatus();
+        drawAll();
+        setFeedback(`Showing rings at (${formatNumber(coords[0])}, ${formatNumber(coords[1])}).`);
+        focusPoint({x:coords[0],y:coords[1]});
         return;
       }
-
-      state.selectedIndex = index;
-      drawAll();
-      renderMatches();
-
-      if (focus) {
-        focusPoint(state.points[index]);
-      }
+      if (state.matches.length) selectPoint(state.matches[0], true);
+      else if (query) setFeedback("No ideology found. Enter a name or coordinates as x,y.", true);
     }
 
     function clearSelection() {
       elements.search.value = "";
       state.matches = [];
+      state.pinnedCenter = null;
+      state.pinnedLabel = null;
       state.selectedIndex = null;
-      drawAll();
       renderMatches();
-      elements.search.focus();
+      updateStatus();
+      drawOvertonRings();
+      applyTransform();
+      updateProximityPanel();
+      setFeedback("");
     }
 
     function resetView() {
-      elements.svg.transition().duration(220).call(zoom.transform, d3.zoomIdentity);
+      elements.svg.interrupt().transition().duration(210)
+        .call(zoom.transform, d3.zoomIdentity);
     }
 
     elements.search.addEventListener("input", updateSearch);
+    elements.go.addEventListener("click", goToSearch);
+    elements.clear.addEventListener("click", clearSelection);
+    elements.reset.addEventListener("click", resetView);
+    elements.detailsToggle.addEventListener("click", () => setDetailsOpen(!state.detailsOpen));
+    elements.showOverton.addEventListener("change", (event) => {
+      state.showOverton = event.target.checked;
+      drawOvertonRings();
+      if (state.pinnedCenter) focusPoint({x:state.pinnedCenter[0],y:state.pinnedCenter[1]});
+    });
     elements.detailSlider.addEventListener("input", (event) => {
-      switchDataset(Number(event.target.value) - 1);
+      const index = Number(event.target.value) - 1;
+      clearTimeout(state.detailChangeTimer);
+      state.detailChangeTimer = setTimeout(() => switchDataset(index), 55);
     });
-    elements.showExtremes.addEventListener("change", (event) => {
-      applyBoundsMode(event.target.checked);
-    });
+    elements.showExtremes.addEventListener("change", (event) => applyBoundsMode(event.target.checked));
     elements.colorfulCategories.addEventListener("change", (event) => {
       state.colorfulCategories = event.target.checked;
       drawAll();
     });
 
     elements.search.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        if (state.matches.length) {
-          selectPoint(state.matches[0], true);
-        }
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        clearSelection();
-      }
+      if (event.key === "Enter") { event.preventDefault(); goToSearch(); }
+      else if (event.key === "Escape") { event.preventDefault(); clearSelection(); }
     });
-
     document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        clearSelection();
+      if (event.key === "Escape") clearSelection();
+    });
+    document.addEventListener("pointerdown", (event) => {
+      if (!event.target.closest(".search-wrap") && !event.target.closest("#go")) {
+        elements.matches.hidden = true;
+        elements.search.setAttribute("aria-expanded", "false");
       }
     });
+    elements.search.addEventListener("focus", renderMatches);
+    window.addEventListener("resize", () => scheduleNavigationRefine(150));
 
-    window.addEventListener("resize", () => {
-      drawAll();
-    });
-
-    elements.clear.addEventListener("click", clearSelection);
-    elements.reset.addEventListener("click", resetView);
-    elements.svg.on("click", () => {
-      if (state.selectedIndex !== null) {
-        state.selectedIndex = null;
-        drawAll();
-        renderMatches();
+    // Point selection also works when individual small data dots are not drawn.
+    elements.svg.on("click", (event) => {
+      if (event.defaultPrevented) return;
+      const [px, py] = d3.pointer(event, elements.svg.node());
+      const x = xScale.invert(state.transform.invertX(px));
+      const y = yScale.invert(state.transform.invertY(py));
+      const localUnit = (xScale(1) - xScale(0)) * state.transform.k;
+      let best = null;
+      for (let i = 0; i < state.points.length; i++) {
+        const point = state.points[i];
+        if (!isInGraphBounds(point)) continue;
+        const distPx = Math.hypot(point.x-x,point.y-y)*localUnit;
+        if (distPx <= 15 && (best === null || distPx < best.dist)) best = {index:i,dist:distPx};
       }
+      if (best) selectPoint(best.index, false);
     });
 
+    // All bundled CSVs are embedded as a fallback so double-clicking index.html
+    // works from Finder without a local HTTP server. On a website, request CSV
+    // files first so newer datasets can be deployed independently.
+    const embeddedFiles = JSON.parse(document.getElementById("embedded-data").textContent);
     function fetchText(path) {
+      if (location.protocol === "file:") return Promise.resolve(embeddedFiles[path]);
       return fetch(path)
         .then((response) => {
-          if (!response.ok) {
-            throw new Error(`Could not load ${path}.`);
-          }
+          if (!response.ok) throw new Error(`Could not load ${path}.`);
           return response.text();
+        })
+        .catch((error) => {
+          if (Object.prototype.hasOwnProperty.call(embeddedFiles, path)) return embeddedFiles[path];
+          throw error;
         });
     }
 
@@ -1875,6 +2189,8 @@
         updateStatus();
         renderMatches();
         drawAll();
+        setDetailsOpen(false);
+        setFeedback("Search by ideology name or enter x,y.");
       })
       .catch((error) => {
         elements.status.textContent = `${APP_TITLE}: ${error.message} Run a local server or publish with GitHub Pages.`;

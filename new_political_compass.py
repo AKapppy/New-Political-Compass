@@ -32,11 +32,12 @@ import pandas as pd
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.backend_bases import Event, MouseEvent
 from matplotlib.figure import Figure
-from matplotlib.patches import Polygon as MplPolygon
+from matplotlib.patches import Circle as MplCircle, Polygon as MplPolygon, Wedge as MplWedge
 from matplotlib.colors import to_rgba
+from matplotlib.collections import PolyCollection
 
 try:
-    from scipy.spatial import Voronoi, QhullError
+    from scipy.spatial import Voronoi, QhullError, cKDTree
 except ImportError as exc:  # pragma: no cover - user environment check
     raise SystemExit(
         "Missing dependency: scipy. Install with: pip3 install matplotlib pandas numpy scipy shapely"
@@ -84,21 +85,23 @@ WORLD_MIN = GRAPH_MIN
 WORLD_MAX = GRAPH_MAX
 WORLD_SPAN = WORLD_MAX - WORLD_MIN
 MIN_VIEW_SPAN = 0.75
-SEARCH_FOCUS_SPAN = 6.0
+SEARCH_FOCUS_SPAN = 12.5
+OVERTON_MAX_RADIUS = 5.0
+OVERTON_FOCUS_MARGIN = 1.0
 MAX_SEARCH_RESULTS = 15
 CLICK_DISTANCE_PIXELS = 16
 PAN_CLICK_TOLERANCE_PIXELS = 5
-SCROLL_ZOOM_IN_SCALE = 0.96
+SCROLL_ZOOM_IN_SCALE = 0.90
 SCROLL_ZOOM_OUT_SCALE = 1.0 / SCROLL_ZOOM_IN_SCALE
 LABEL_EDGE_MARGIN_PIXELS = 2.0
-LABEL_PADDING_PIXELS = 0.5
+LABEL_PADDING_PIXELS = 2.5
 LABEL_OFFSET_PIXELS = 4.0
 CATEGORY_LABEL_OFFSET_PIXELS = 5.0
 LABEL_ZOOMED_OUT_FRACTION = 0.32
 LABEL_ZOOM_CURVE = 1.15
 LABEL_MIN_VISIBLE = 28
-LABEL_WIDTH_FACTOR = 0.46
-LABEL_HEIGHT_FACTOR = 1.00
+LABEL_WIDTH_FACTOR = 0.82
+LABEL_HEIGHT_FACTOR = 1.15
 LABEL_PRIORITY_FRACTION = 0.45
 LABEL_OPEN_SPACE_MIN_PIXELS = 48.0
 MANDATORY_LABEL_VORONOI_AREA = 4.0
@@ -108,10 +111,10 @@ MANDATORY_LABEL_VORONOI_AREA = 4.0
 # Visual settings
 # -----------------------------------------------------------------------------
 
-BACKGROUND = "#111111"
-PANEL_BACKGROUND = "#171717"
-GRID_MAJOR = "#3a3a3a"
-GRID_MINOR = "#242424"
+BACKGROUND = "#101518"
+PANEL_BACKGROUND = "#182024"
+GRID_MAJOR = "#314044"
+GRID_MINOR = "#202c30"
 AXIS_COLOR = "#b7b7b7"
 OUTER_BAND = "#050505"
 TEXT_COLOR = "#fbfbfb"
@@ -122,12 +125,12 @@ SELECTED_COLOR = "#fff176"
 SELECTED_RING = "#ff4081"
 VORONOI_EDGE = "#9be7ff"
 VORONOI_FILL = "#4fc3f7"
-VORONOI_FILL_ALPHA = 0.08
-VORONOI_EDGE_ALPHA = 0.52
+VORONOI_FILL_ALPHA = 0.055
+VORONOI_EDGE_ALPHA = 0.42
 CATEGORY_EDGE = "#39c462"
 CATEGORY_FILL = "#27c35a"
 CATEGORY_FILL_ALPHA = 0.035
-CATEGORY_EDGE_ALPHA = 0.64
+CATEGORY_EDGE_ALPHA = 0.56
 CATEGORY_COLORFUL_FILL_ALPHA = 0.3
 CATEGORY_COLORFUL_EDGE = "#f2f2f2"
 CATEGORY_POINT = "#9ff6b4"
@@ -135,6 +138,43 @@ CATEGORY_TEXT = "#8fdca3"
 CATEGORY_DARK_TEXT = "#d8d8d8"
 TOOLTIP_BACKGROUND = "#222222"
 TOOLTIP_EDGE = "#eeeeee"
+
+# Colors apply to ideological proximity, not measured public approval.
+OVERTON_BANDS = (
+    ("Policy", "r < 1", "#39d2c0"),
+    ("Popular", "1 <= r < 2", "#8bd671"),
+    ("Sensible", "2 <= r < 3", "#66b7ed"),
+    ("Acceptable", "3 <= r < 4", "#edc36b"),
+    ("Radical", "4 <= r <= 5", "#f49375"),
+    ("Unthinkable", "r > 5", "#aaaaaa"),
+)
+
+
+def parse_coordinate_query(query: str) -> Optional[Tuple[float, float]]:
+    """Accept 'x,y' or '(x, y)', without treating ideology names as coordinates."""
+    raw = query.strip()
+    if raw.startswith("(") and raw.endswith(")"):
+        raw = raw[1:-1].strip()
+    parts = raw.split(",")
+    if len(parts) != 2:
+        return None
+    try:
+        x, y = (float(value.strip()) for value in parts)
+    except ValueError:
+        return None
+    return (x, y) if math.isfinite(x) and math.isfinite(y) else None
+
+
+def overton_band_index(distance: float) -> int:
+    """Map nonnegative radius to a band, including exact boundary values."""
+    if not math.isfinite(distance) or distance < 0:
+        raise ValueError("Distance must be a finite, nonnegative number")
+    if distance > OVERTON_MAX_RADIUS:
+        return 5
+    if distance == OVERTON_MAX_RADIUS:
+        return 4
+    return min(int(distance), 4)
+
 
 
 @dataclass(frozen=True)
@@ -147,6 +187,16 @@ class CompassPoint:
     group: Optional[str]
     hex_color: Optional[str]
     row_number: int
+
+def overton_counts(
+    center: Tuple[float, float], points: Sequence[CompassPoint]
+) -> List[int]:
+    """Count ideologies in each distance band, not people or popularity."""
+    counts = [0] * len(OVERTON_BANDS)
+    for point in points:
+        distance = math.hypot(point.x - center[0], point.y - center[1])
+        counts[overton_band_index(distance)] += 1
+    return counts
 
 
 @dataclass(frozen=True)
@@ -548,17 +598,34 @@ class NewPoliticalCompassApp:
         self.view_max_y = WORLD_MAX
 
         self.selected_index: Optional[int] = None
+        self.custom_center: Optional[Tuple[float, float]] = None
         self.listbox_indices: List[int] = []
         self.drag_start: Optional[DragStart] = None
         self.is_dragging = False
+        # A pin is independent of the currently selected detail level. Keep its
+        # location even if that ideology disappears at another level.
+        self.pinned_center: Optional[Tuple[float, float]] = None
+        self.pinned_label: Optional[str] = None
+        self.geometry_cache: dict[Tuple[int, bool], tuple] = {}
+        self._navigation_after_id: Optional[str] = None
+        self._resize_after_id: Optional[str] = None
+        self._detail_after_id: Optional[str] = None
+        self._pending_detail_index: Optional[int] = None
+        self._details_visible = False
+        self._pan_image_item: Optional[int] = None
+        self._pan_image_origin: Optional[Tuple[float, float]] = None
 
         self.root.title(APP_TITLE)
         self.root.configure(bg=BACKGROUND)
-        self.root.geometry("1180x850")
-        self.root.minsize(760, 560)
+        self.root.geometry("1360x900")
+        self.root.minsize(900, 590)
 
         self.search_var = tk.StringVar()
         self.status_var = tk.StringVar()
+        self.search_feedback_var = tk.StringVar(value="Type an ideology or coordinates (x, y).")
+        self.center_info_var = tk.StringVar(value="Select an ideology or enter x,y to show proximity rings.")
+        self.band_count_vars = [tk.StringVar(value="—") for _ in OVERTON_BANDS]
+        self.show_overton_var = tk.BooleanVar(value=True)
         self.detail_var = tk.IntVar(value=len(self.datasets))
         self.show_extremes_var = tk.BooleanVar(value=False)
         self.colorful_categories_var = tk.BooleanVar(value=False)
@@ -668,24 +735,47 @@ class NewPoliticalCompassApp:
         self.category_points = list(dataset.category_points)
         self.category_warnings = list(dataset.category_warnings)
 
-        self.selected_index = None
-        self.listbox_indices = []
         self.coord_to_point_indices = self._build_coord_index()
         self.category_coord_keys = {self._point_coord_key(point) for point in self.category_points}
         self._update_view_bounds()
-        graph_min, graph_max = self._current_graph_bounds()
-        self.unique_coords, self.unique_coord_to_point_index = self._build_unique_coords(
-            self.points, in_bounds_only=True
-        )
-        self.voronoi_cells, self.voronoi_warning = build_clipped_voronoi_cells(
-            self.unique_coords, graph_min, graph_max
-        )
-        self.category_unique_coords, self.category_unique_coord_to_point_index = (
-            self._build_unique_coords(self.category_points, in_bounds_only=True)
-        )
-        self.category_voronoi_cells, self.category_voronoi_warning = build_clipped_voronoi_cells(
-            self.category_unique_coords, graph_min, graph_max
-        )
+        cache_key = (dataset_index, self.show_extremes_var.get())
+        if cache_key not in self.geometry_cache:
+            graph_min, graph_max = self._current_graph_bounds()
+            unique_coords, unique_indices = self._build_unique_coords(
+                self.points, in_bounds_only=True
+            )
+            cells, warning = build_clipped_voronoi_cells(unique_coords, graph_min, graph_max)
+            cat_coords, cat_indices = self._build_unique_coords(
+                self.category_points, in_bounds_only=True
+            )
+            cat_cells, cat_warning = build_clipped_voronoi_cells(cat_coords, graph_min, graph_max)
+            self.geometry_cache[cache_key] = (
+                unique_coords, unique_indices, cells, warning,
+                cat_coords, cat_indices, cat_cells, cat_warning,
+            )
+        (
+            self.unique_coords, self.unique_coord_to_point_index,
+            self.voronoi_cells, self.voronoi_warning,
+            self.category_unique_coords, self.category_unique_coord_to_point_index,
+            self.category_voronoi_cells, self.category_voronoi_warning,
+        ) = self.geometry_cache[cache_key]
+        self._resolve_pinned_selection()
+
+    def _resolve_pinned_selection(self) -> None:
+        """Keep the map pin fixed, matching a current data point only if identical."""
+        self.selected_index = None
+        self.custom_center = self.pinned_center
+        if self.pinned_center is None or not self.pinned_label:
+            return
+        wanted = self._normalize_label_key(self.pinned_label)
+        x, y = self.pinned_center
+        for i, point in enumerate(self.points):
+            if (self._normalize_label_key(point.name) == wanted
+                    and math.isclose(point.x, x, abs_tol=1e-8)
+                    and math.isclose(point.y, y, abs_tol=1e-8)):
+                self.selected_index = i
+                self.custom_center = None
+                return
 
     def _notify_active_dataset_warnings(self) -> None:
         if self.active_dataset_index in self.warning_notified_dataset_indices:
@@ -727,199 +817,165 @@ class NewPoliticalCompassApp:
     # ------------------------------------------------------------------
 
     def _build_ui(self) -> None:
-        top_frame = tk.Frame(self.root, bg=PANEL_BACKGROUND, padx=10, pady=8)
-        top_frame.pack(side=tk.TOP, fill=tk.X)
+        header = tk.Frame(self.root, bg=PANEL_BACKGROUND, padx=14, pady=7)
+        header.pack(side=tk.TOP, fill=tk.X)
+        top_frame = tk.Frame(header, bg=PANEL_BACKGROUND)
+        top_frame.pack(fill=tk.X)
+        search_frame = tk.Frame(header, bg=PANEL_BACKGROUND)
+        search_frame.pack(fill=tk.X, pady=(5, 0))
 
-        title_label = tk.Label(
-            top_frame,
-            text=APP_TITLE,
-            bg=PANEL_BACKGROUND,
-            fg=TEXT_COLOR,
-            font=("Helvetica Neue", 16, "bold"),
-        )
-        title_label.pack(side=tk.LEFT, padx=(0, 12))
+        tk.Label(
+            top_frame, text=APP_TITLE, bg=PANEL_BACKGROUND, fg=TEXT_COLOR,
+            font=("Helvetica Neue", 15, "bold"),
+        ).pack(side=tk.LEFT, padx=(0, 17))
 
         detail_frame = tk.Frame(top_frame, bg=PANEL_BACKGROUND)
-        detail_frame.pack(side=tk.LEFT, padx=(0, 18))
-
-        detail_left_label = tk.Label(
-            detail_frame,
-            text="Least detailed",
-            bg=PANEL_BACKGROUND,
-            fg=MUTED_TEXT,
-            font=("Helvetica Neue", 10),
-        )
-        detail_left_label.pack(side=tk.LEFT, padx=(0, 6))
-
+        detail_frame.pack(side=tk.LEFT, padx=(0, 16))
+        tk.Label(
+            detail_frame, text="Detail", bg=PANEL_BACKGROUND,
+            fg=MUTED_TEXT, font=("Helvetica Neue", 10),
+        ).pack(side=tk.LEFT, padx=(0, 7))
         detail_slider_frame = tk.Frame(detail_frame, bg=PANEL_BACKGROUND)
         detail_slider_frame.pack(side=tk.LEFT)
-
         self.detail_scale = tk.Scale(
-            detail_slider_frame,
-            from_=len(self.datasets),
-            to=1,
-            orient=tk.HORIZONTAL,
-            variable=self.detail_var,
-            command=self._on_detail_slider_changed,
-            bg=PANEL_BACKGROUND,
-            fg=TEXT_COLOR,
-            activebackground=SELECTED_RING,
-            troughcolor="#303030",
-            highlightthickness=0,
-            relief=tk.FLAT,
-            showvalue=False,
-            resolution=1,
-            length=132,
-            font=("Helvetica Neue", 10),
+            detail_slider_frame, from_=len(self.datasets), to=1, orient=tk.HORIZONTAL,
+            variable=self.detail_var, command=self._on_detail_slider_changed,
+            bg=PANEL_BACKGROUND, fg=TEXT_COLOR, activebackground=SELECTED_RING,
+            troughcolor="#344044", highlightthickness=0, relief=tk.FLAT,
+            showvalue=False, resolution=1, length=165,
+            sliderlength=15, bd=0, font=("Helvetica Neue", 10),
         )
         self.detail_scale.pack(side=tk.TOP, fill=tk.X)
-
-        detail_ticks = tk.Frame(detail_slider_frame, bg=PANEL_BACKGROUND)
-        detail_ticks.pack(side=tk.TOP, fill=tk.X)
+        ticks = tk.Frame(detail_slider_frame, bg=PANEL_BACKGROUND)
+        ticks.pack(side=tk.TOP, fill=tk.X)
         for index in reversed(range(len(self.datasets))):
-            tick_label = tk.Label(
-                detail_ticks,
-                text=str(index + 1),
-                bg=PANEL_BACKGROUND,
-                fg=TEXT_COLOR,
-                font=("Helvetica Neue", 9),
-            )
-            tick_label.pack(side=tk.LEFT, expand=True)
+            tk.Label(
+                ticks, text=str(index + 1), bg=PANEL_BACKGROUND,
+                fg=MUTED_TEXT, font=("Helvetica Neue", 8),
+            ).pack(side=tk.LEFT, expand=True)
+        self.detail_scale.bind("<ButtonRelease-1>", self._flush_detail_switch)
 
-        detail_right_label = tk.Label(
-            detail_frame,
-            text="Most detailed",
-            bg=PANEL_BACKGROUND,
-            fg=MUTED_TEXT,
-            font=("Helvetica Neue", 10),
+        for title, var, callback in (
+            ("Extremes", self.show_extremes_var, self._on_extremes_toggled),
+            ("Colorful", self.colorful_categories_var, self._on_colorful_categories_toggled),
+            ("Proximity rings", self.show_overton_var, self._on_overton_toggled),
+        ):
+            tk.Checkbutton(
+                top_frame, text=title, variable=var, command=callback,
+                bg=PANEL_BACKGROUND, fg=TEXT_COLOR, activebackground=PANEL_BACKGROUND,
+                activeforeground=TEXT_COLOR, selectcolor="#253237", relief=tk.FLAT,
+                highlightthickness=0, font=("Helvetica Neue", 10),
+            ).pack(side=tk.LEFT, padx=(0, 11))
+
+        self.details_button = tk.Button(
+            top_frame, text="Details  ▸", command=self._toggle_details,
+            bg="#28373d", fg=TEXT_COLOR, activebackground="#3b5057",
+            activeforeground=TEXT_COLOR, relief=tk.FLAT,
+            font=("Helvetica Neue", 10, "bold"), padx=12, pady=3,
         )
-        detail_right_label.pack(side=tk.LEFT, padx=(6, 0))
+        self.details_button.pack(side=tk.RIGHT, padx=(10, 0))
 
-        extremes_toggle = tk.Checkbutton(
-            top_frame,
-            text="Show extremes",
-            variable=self.show_extremes_var,
-            command=self._on_extremes_toggled,
-            bg=PANEL_BACKGROUND,
-            fg=TEXT_COLOR,
-            activebackground=PANEL_BACKGROUND,
-            activeforeground=TEXT_COLOR,
-            selectcolor="#252525",
-            relief=tk.FLAT,
-            highlightthickness=0,
-            font=("Helvetica Neue", 11),
-        )
-        extremes_toggle.pack(side=tk.LEFT, padx=(0, 14))
-
-        colorful_toggle = tk.Checkbutton(
-            top_frame,
-            text="Colorful",
-            variable=self.colorful_categories_var,
-            command=self._on_colorful_categories_toggled,
-            bg=PANEL_BACKGROUND,
-            fg=TEXT_COLOR,
-            activebackground=PANEL_BACKGROUND,
-            activeforeground=TEXT_COLOR,
-            selectcolor="#252525",
-            relief=tk.FLAT,
-            highlightthickness=0,
-            font=("Helvetica Neue", 11),
-        )
-        colorful_toggle.pack(side=tk.LEFT, padx=(0, 14))
-
-        search_label = tk.Label(
-            top_frame,
-            text="Search point:",
-            bg=PANEL_BACKGROUND,
-            fg=TEXT_COLOR,
-            font=("Helvetica Neue", 12),
-        )
-        search_label.pack(side=tk.LEFT, padx=(0, 6))
-
+        tk.Label(
+            search_frame, text="Find ideology / x,y", bg=PANEL_BACKGROUND,
+            fg=TEXT_COLOR, font=("Helvetica Neue", 11),
+        ).pack(side=tk.LEFT, padx=(0, 8))
         self.search_entry = tk.Entry(
-            top_frame,
-            textvariable=self.search_var,
-            width=34,
-            bg="#252525",
-            fg=TEXT_COLOR,
-            insertbackground=TEXT_COLOR,
-            relief=tk.FLAT,
-            font=("Helvetica Neue", 12),
+            search_frame, textvariable=self.search_var, width=29,
+            bg="#263238", fg=TEXT_COLOR, insertbackground=TEXT_COLOR,
+            relief=tk.FLAT, font=("Helvetica Neue", 11),
+            highlightthickness=1, highlightbackground="#394a50",
+            highlightcolor="#69bed0",
         )
         self.search_entry.pack(side=tk.LEFT, padx=(0, 8), ipady=4)
-
+        self.go_button = tk.Button(
+            search_frame, text="Go / Select", command=self._on_search_enter,
+            bg="#85cced", fg="#111111", activebackground="#bbecff",
+            relief=tk.FLAT, font=("Helvetica Neue", 10, "bold"), padx=12, pady=3,
+        )
+        self.go_button.pack(side=tk.LEFT, padx=(0, 7))
         self.clear_button = tk.Button(
-            top_frame,
-            text="Clear",
-            command=self.clear_selection,
-            bg="#d8d8d8",
-            fg="#111111",
-            activebackground="#eeeeee",
-            activeforeground="#111111",
-            relief=tk.FLAT,
-            font=("Helvetica Neue", 11),
-            padx=10,
+            search_frame, text="Clear", command=self.clear_selection,
+            bg="#36464d", fg=TEXT_COLOR, activebackground="#50626a",
+            activeforeground=TEXT_COLOR, relief=tk.FLAT,
+            font=("Helvetica Neue", 10), padx=11, pady=3,
         )
         self.clear_button.pack(side=tk.LEFT, padx=(0, 12))
+        tk.Label(
+            search_frame, textvariable=self.status_var, bg=PANEL_BACKGROUND,
+            fg=MUTED_TEXT, font=("Helvetica Neue", 10), anchor="w",
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        status_label = tk.Label(
-            top_frame,
-            textvariable=self.status_var,
-            bg=PANEL_BACKGROUND,
-            fg=MUTED_TEXT,
-            font=("Helvetica Neue", 11),
+        # Search suggestions sit below the search bar, only while needed.
+        # The graph therefore doesn't permanently sacrifice 250+ px of width.
+        self.matches_frame = tk.Frame(header, bg=PANEL_BACKGROUND)
+        self.matches_title_var = tk.StringVar()
+        tk.Label(
+            self.matches_frame, textvariable=self.matches_title_var,
+            bg=PANEL_BACKGROUND, fg=MUTED_TEXT, font=("Helvetica Neue", 9),
             anchor="w",
+        ).pack(anchor="w", pady=(1, 3))
+        self.results_listbox = tk.Listbox(
+            self.matches_frame, width=63, height=5, bg="#223037", fg=TEXT_COLOR,
+            selectbackground="#3a5962", selectforeground=SELECTED_COLOR,
+            highlightthickness=1, highlightbackground="#35494f", relief=tk.FLAT,
+            activestyle="none", exportselection=False,
+            font=("Helvetica Neue", 10),
         )
-        status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.results_listbox.pack(anchor="w", fill=tk.X)
 
         body = tk.Frame(self.root, bg=BACKGROUND)
         body.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-        self.results_frame = tk.Frame(body, bg=BACKGROUND, padx=8, pady=8)
-        self.results_frame.pack(side=tk.RIGHT, fill=tk.Y)
-
-        results_label = tk.Label(
+        self.results_frame = tk.Frame(body, bg=PANEL_BACKGROUND, padx=13, pady=14, width=225)
+        self.results_frame.pack_propagate(False)
+        tk.Label(
+            self.results_frame, text="SELECTED POINT", bg=PANEL_BACKGROUND,
+            fg=MUTED_TEXT, font=("Helvetica Neue", 10, "bold"),
+        ).pack(anchor="w", pady=(0, 6))
+        tk.Label(
+            self.results_frame, textvariable=self.center_info_var,
+            bg=PANEL_BACKGROUND, fg=TEXT_COLOR, font=("Helvetica Neue", 11),
+            justify=tk.LEFT, wraplength=197,
+        ).pack(anchor="w", pady=(0, 15))
+        tk.Frame(self.results_frame, bg="#35444b", height=1).pack(fill=tk.X, pady=(0, 12))
+        tk.Label(
+            self.results_frame, text="PROXIMITY BANDS", bg=PANEL_BACKGROUND,
+            fg=MUTED_TEXT, font=("Helvetica Neue", 10, "bold"),
+        ).pack(anchor="w", pady=(0, 8))
+        for index, (name, rule, color) in enumerate(OVERTON_BANDS):
+            band_row = tk.Frame(self.results_frame, bg=PANEL_BACKGROUND)
+            band_row.pack(fill=tk.X, pady=4)
+            tk.Label(
+                band_row, text="●", bg=PANEL_BACKGROUND, fg=color,
+                font=("Helvetica Neue", 13),
+            ).pack(side=tk.LEFT)
+            tk.Label(
+                band_row, text=name, bg=PANEL_BACKGROUND, fg=TEXT_COLOR,
+                font=("Helvetica Neue", 10), anchor="w",
+            ).pack(side=tk.LEFT, padx=(5, 3))
+            tk.Label(
+                band_row, textvariable=self.band_count_vars[index],
+                bg=PANEL_BACKGROUND, fg=TEXT_COLOR,
+                font=("Helvetica Neue", 10, "bold"), anchor="e",
+            ).pack(side=tk.RIGHT)
+            tk.Label(
+                band_row, text=rule, bg=PANEL_BACKGROUND, fg=MUTED_TEXT,
+                font=("Helvetica Neue", 8), anchor="e",
+            ).pack(side=tk.RIGHT, padx=(0, 7))
+        tk.Label(
             self.results_frame,
-            text="Matches",
-            bg=BACKGROUND,
-            fg=TEXT_COLOR,
-            font=("Helvetica Neue", 12, "bold"),
-        )
-        results_label.pack(anchor="w", pady=(0, 6))
-
-        self.results_listbox = tk.Listbox(
+            text="Counts are plotted ideologies—not public opinion or policy viability.",
+            bg=PANEL_BACKGROUND, fg=MUTED_TEXT, wraplength=195,
+            justify=tk.LEFT, font=("Helvetica Neue", 9),
+        ).pack(anchor="w", pady=(17, 6))
+        tk.Label(
             self.results_frame,
-            width=34,
-            height=18,
-            bg="#181818",
-            fg=TEXT_COLOR,
-            selectbackground="#444444",
-            selectforeground=SELECTED_COLOR,
-            highlightthickness=1,
-            highlightbackground="#333333",
-            relief=tk.FLAT,
-            activestyle="none",
-            font=("Helvetica Neue", 11),
-        )
-        self.results_listbox.pack(side=tk.TOP, fill=tk.Y)
+            text="Scroll to zoom · Drag to pan\nClick a dot to select · Esc to clear",
+            bg=PANEL_BACKGROUND, fg=MUTED_TEXT, wraplength=195,
+            justify=tk.LEFT, font=("Helvetica Neue", 9),
+        ).pack(anchor="w", pady=(12, 0))
 
-        help_text = (
-            "Scroll: zoom\n"
-            "Drag: pan\n"
-            "Click point: info\n"
-            "Esc: clear"
-        )
-        help_label = tk.Label(
-            self.results_frame,
-            text=help_text,
-            bg=BACKGROUND,
-            fg=MUTED_TEXT,
-            justify=tk.LEFT,
-            font=("Helvetica Neue", 10),
-        )
-        help_label.pack(anchor="w", pady=(12, 0))
-
-        fig = Figure(figsize=(9, 8), dpi=100, facecolor=BACKGROUND)
+        fig = Figure(figsize=(10, 9), dpi=100, facecolor=BACKGROUND)
         self.fig = fig
         self.ax = fig.add_subplot(111)
         self.canvas = FigureCanvasTkAgg(fig, master=body)
@@ -927,27 +983,89 @@ class NewPoliticalCompassApp:
         self.canvas_widget.configure(bg=BACKGROUND, highlightthickness=0)
         self.canvas_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
+        self.footer_frame = tk.Frame(self.root, bg=PANEL_BACKGROUND, padx=15, pady=4)
+        self.footer_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        # Pack the expanding graph last; otherwise Tk can clip the footer.
+        body.pack_forget()
+        body.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        tk.Label(
+            self.footer_frame, textvariable=self.search_feedback_var,
+            bg=PANEL_BACKGROUND, fg=MUTED_TEXT,
+            font=("Helvetica Neue", 9), anchor="w",
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Label(
+            self.footer_frame, text="Scroll: zoom   •   Drag: pan   •   Esc: clear",
+            bg=PANEL_BACKGROUND, fg=MUTED_TEXT,
+            font=("Helvetica Neue", 9), anchor="e",
+        ).pack(side=tk.RIGHT)
+
         self.search_var.trace_add("write", self._on_search_changed)
         self.results_listbox.bind("<<ListboxSelect>>", self._on_result_selected)
         self.search_entry.bind("<Return>", self._on_search_enter)
         self.search_entry.bind("<Escape>", self._on_escape)
         self.root.bind("<Escape>", self._on_escape)
 
+    def _toggle_details(self) -> None:
+        self._details_visible = not self._details_visible
+        if self._details_visible:
+            # The sidebar must be packed before the expanding Matplotlib canvas
+            # or the canvas claims the sidebar's horizontal space.
+            self.canvas_widget.pack_forget()
+            self.results_frame.pack(side=tk.RIGHT, fill=tk.Y)
+            self.canvas_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            self.details_button.config(text="Details  ◂")
+        else:
+            self.results_frame.pack_forget()
+            self.details_button.config(text="Details  ▸")
+        self._queue_resize_relayout()
+
+    def _queue_resize_relayout(self, _event: object = None) -> None:
+        if self._resize_after_id is not None:
+            self.root.after_cancel(self._resize_after_id)
+        # Tk/Matplotlib update canvas dimensions asynchronously. Place labels
+        # only after the new axes bbox has stabilized.
+        self._resize_after_id = self.root.after(120, self._finish_resize_relayout)
+
+    def _finish_resize_relayout(self) -> None:
+        self._resize_after_id = None
+        if not self.is_dragging:
+            self.draw_plot(keep_view=True)
+
+    def _set_matches_visible(self, visible: bool) -> None:
+        if visible and not self.matches_frame.winfo_manager():
+            self.matches_frame.pack(side=tk.TOP, fill=tk.X, pady=(5, 0))
+        elif not visible and self.matches_frame.winfo_manager():
+            self.matches_frame.pack_forget()
+
     def _on_detail_slider_changed(self, value: str) -> None:
-        dataset_index = int(round(float(value))) - 1
-        self.switch_dataset(dataset_index)
+        # Coalesce slider scrubbing: a Voronoi redraw is needed only for the
+        # most recently requested level, not every intermediate mouse event.
+        self._pending_detail_index = int(round(float(value))) - 1
+        if self._detail_after_id is not None:
+            self.root.after_cancel(self._detail_after_id)
+        self._detail_after_id = self.root.after(85, self._flush_detail_switch)
+
+    def _flush_detail_switch(self, _event: object = None) -> None:
+        if self._detail_after_id is not None:
+            self.root.after_cancel(self._detail_after_id)
+            self._detail_after_id = None
+        if self._pending_detail_index is not None:
+            index = self._pending_detail_index
+            self._pending_detail_index = None
+            self.switch_dataset(index)
 
     def switch_dataset(self, dataset_index: int) -> None:
         if dataset_index == self.active_dataset_index:
             return
-
         current_xlim = self.ax.get_xlim()
         current_ylim = self.ax.get_ylim()
+        # _apply_dataset will resolve the existing pin into the new data if
+        # the exact point exists, otherwise keep it as a fixed coordinate pin.
         self._apply_dataset(dataset_index)
-        self.ax.set_xlim(*self._clamp_x_limits(float(current_xlim[0]), float(current_xlim[1])))
-        self.ax.set_ylim(*self._clamp_y_limits(float(current_ylim[0]), float(current_ylim[1])))
-        self.search_var.set("")
-        self.results_listbox.delete(0, tk.END)
+        self.ax.set_xlim(*self._clamp_x_limits(*map(float, current_xlim)))
+        self.ax.set_ylim(*self._clamp_y_limits(*map(float, current_ylim)))
+        self._on_search_changed(show_matches=False)
+        self._update_overton_panel()
         self._update_status()
         self._update_detail_slider()
         self.draw_plot(keep_view=True)
@@ -957,17 +1075,25 @@ class NewPoliticalCompassApp:
         self.detail_var.set(self.active_dataset_index + 1)
 
     def _on_extremes_toggled(self) -> None:
+        current_xlim = self.ax.get_xlim()
+        current_ylim = self.ax.get_ylim()
         self._apply_dataset(self.active_dataset_index)
-        self.search_var.set("")
-        self.results_listbox.delete(0, tk.END)
+        self.ax.set_xlim(*self._clamp_x_limits(*map(float, current_xlim)))
+        self.ax.set_ylim(*self._clamp_y_limits(*map(float, current_ylim)))
+        self._on_search_changed(show_matches=False)
+        self._update_overton_panel()
         self._update_status()
-        self.draw_plot()
+        self.draw_plot(keep_view=True)
         self._notify_active_dataset_warnings()
 
     def _on_colorful_categories_toggled(self) -> None:
         self.draw_plot(keep_view=True)
 
+    def _on_overton_toggled(self) -> None:
+        self.draw_plot(keep_view=True)
+
     def _connect_events(self) -> None:
+        self.canvas.mpl_connect("resize_event", self._queue_resize_relayout)
         self.canvas.mpl_connect("scroll_event", self._handle_scroll_event)
         self.canvas.mpl_connect("button_press_event", self._handle_mouse_press_event)
         self.canvas.mpl_connect("motion_notify_event", self._handle_mouse_move_event)
@@ -992,6 +1118,23 @@ class NewPoliticalCompassApp:
     # ------------------------------------------------------------------
     # Drawing
     # ------------------------------------------------------------------
+
+    def _cancel_navigation_refine(self) -> None:
+        if self._navigation_after_id is not None:
+            self.root.after_cancel(self._navigation_after_id)
+            self._navigation_after_id = None
+
+    def _refine_navigation(self) -> None:
+        self._navigation_after_id = None
+        if not self.is_dragging:
+            self.draw_plot(keep_view=True)
+
+    def _preview_navigation(self) -> None:
+        # Pan/zoom only changes the axes' affine transform. Reuse all existing
+        # collections, text and circles rather than reconstructing the graph.
+        self.canvas.draw_idle()
+        self._cancel_navigation_refine()
+        self._navigation_after_id = self.root.after(170, self._refine_navigation)
 
     def _setup_axes(self) -> None:
         graph_min, graph_max = self._current_graph_bounds()
@@ -1024,18 +1167,20 @@ class NewPoliticalCompassApp:
         self.ax.tick_params(axis="both", colors=MUTED_TEXT, labelsize=9)
         self.ax.set_xlabel("x", color=MUTED_TEXT)
         self.ax.set_ylabel("y", color=MUTED_TEXT)
-        self.fig.subplots_adjust(left=0.06, right=0.98, top=0.98, bottom=0.06)
+        self.fig.subplots_adjust(left=0.055, right=0.985, top=0.992, bottom=0.058)
 
     def draw_plot(self, keep_view: bool = False) -> None:
         old_xlim = self.ax.get_xlim() if keep_view else (self.view_min_x, self.view_max_x)
         old_ylim = self.ax.get_ylim() if keep_view else (self.view_min_y, self.view_max_y)
 
+        self._cancel_navigation_refine()
         self.ax.clear()
         self._setup_axes()
         self.ax.set_xlim(*old_xlim)
         self.ax.set_ylim(*old_ylim)
 
         self._draw_voronoi_cells()
+        self._draw_overton_rings()
         visible_ideology_points = self._visible_ideology_points_by_priority()
         occupied_label_boxes, visible_category_points = self._draw_category_labels()
         self._draw_category_points(visible_category_points)
@@ -1044,6 +1189,46 @@ class NewPoliticalCompassApp:
         self._draw_selected_point()
 
         self.canvas.draw_idle()
+
+    def _active_center(self) -> Optional[Tuple[float, float]]:
+        return self.pinned_center
+
+    def _draw_overton_rings(self) -> None:
+        center = self._active_center()
+        if center is None or not self.show_overton_var.get():
+            return
+
+        # True annuli: paint each band once so its color doesn't mix with others.
+        # The region beyond radius 5 remains the ordinary map background.
+        for radius in range(5, 0, -1):
+            _name, _rule, color = OVERTON_BANDS[radius - 1]
+            self.ax.add_patch(MplWedge(
+                center, r=radius, theta1=0, theta2=360, width=1,
+                facecolor=to_rgba(color, 0.17),
+                edgecolor="none",
+                zorder=2.8,
+                clip_on=True,
+            ))
+            self.ax.add_patch(MplCircle(
+                center, radius=radius, fill=False,
+                edgecolor=to_rgba(color, 0.95),
+                linewidth=1.9,
+                zorder=2.9,
+                clip_on=True,
+            ))
+
+    def _update_overton_panel(self) -> None:
+        center = self._active_center()
+        if center is None:
+            self.center_info_var.set("Select an ideology or enter x,y to show rings.")
+            for variable in self.band_count_vars:
+                variable.set("—")
+            return
+        label = self.pinned_label or "Custom coordinates"
+        self.center_info_var.set(f"{label}\n({center[0]:g}, {center[1]:g})")
+        candidates = [point for point in self.points if self._point_is_in_current_graph_bounds(point)]
+        for variable, count in zip(self.band_count_vars, overton_counts(center, candidates)):
+            variable.set(str(count))
 
     def _draw_voronoi_cells(self) -> None:
         self._draw_cell_patches(
@@ -1094,37 +1279,33 @@ class NewPoliticalCompassApp:
         edge_alpha: float,
         zorder: float,
     ) -> None:
-        for cell in cells:
-            if not cell:
-                continue
-
-            patch = MplPolygon(
-                cell,
-                closed=True,
-                facecolor=to_rgba(fill_color, fill_alpha),
-                edgecolor=to_rgba(edge_color, edge_alpha),
-                linewidth=linewidth,
-                zorder=zorder,
-            )
-            self.ax.add_patch(patch)
+        # One batched GPU/renderer artist instead of hundreds of Polygon artists.
+        valid_cells = [cell for cell in cells if cell]
+        if not valid_cells:
+            return
+        self.ax.add_collection(PolyCollection(
+            valid_cells, closed=True,
+            facecolors=to_rgba(fill_color, fill_alpha),
+            edgecolors=to_rgba(edge_color, edge_alpha),
+            linewidths=linewidth, zorder=zorder,
+        ))
 
     def _draw_category_cell_patches(self) -> None:
-        for cell, point_index in zip(
-            self.category_voronoi_cells, self.category_unique_coord_to_point_index
-        ):
-            if not cell:
-                continue
-
-            point = self.category_points[point_index]
-            patch = MplPolygon(
-                cell,
-                closed=True,
-                facecolor=to_rgba(self._category_color(point), CATEGORY_COLORFUL_FILL_ALPHA),
-                edgecolor=to_rgba(CATEGORY_COLORFUL_EDGE, 0.92),
-                linewidth=1.0,
-                zorder=2.1,
-            )
-            self.ax.add_patch(patch)
+        valid = [
+            (cell, self.category_points[index])
+            for cell, index in zip(
+                self.category_voronoi_cells, self.category_unique_coord_to_point_index
+            ) if cell
+        ]
+        if not valid:
+            return
+        self.ax.add_collection(PolyCollection(
+            [cell for cell, point in valid], closed=True,
+            facecolors=[to_rgba(self._category_color(point), CATEGORY_COLORFUL_FILL_ALPHA)
+                        for cell, point in valid],
+            edgecolors=to_rgba(CATEGORY_COLORFUL_EDGE, 0.92),
+            linewidths=1.0, zorder=2.1,
+        ))
 
     def _category_color(self, point: CompassPoint) -> str:
         return point.hex_color or CATEGORY_FILL
@@ -1451,13 +1632,18 @@ class NewPoliticalCompassApp:
                 break
             try_draw_label(index, point)
 
+        # Pixel-space nearest neighbor distances in one KDTree query. This
+        # replaces an O(N^2) Python loop with hundreds of transform calls.
+        neighbor_pixels = self.ax.transData.transform(
+            np.asarray([(p.x, p.y) for p in neighbor_points], dtype=float)
+        ) if neighbor_points else np.empty((0, 2))
+        if len(neighbor_pixels) > 1:
+            neighbor_distances = cKDTree(neighbor_pixels).query(neighbor_pixels, k=2)[0][:, 1]
+        else:
+            neighbor_distances = np.full(len(neighbor_pixels), math.inf)
         open_space_points = [
-            (
-                self._point_screen_openness(point, neighbor_points),
-                index,
-                point,
-            )
-            for index, point in visible_points
+            (float(neighbor_distances[pos]), index, point)
+            for pos, (index, point) in enumerate(visible_points)
             if index not in drawn_indices
         ]
         open_space_points = [
@@ -1514,129 +1700,170 @@ class NewPoliticalCompassApp:
         return label_boxes, labeled_points
 
     def _draw_selected_point(self) -> None:
-        if self.selected_index is None:
+        center = self._active_center()
+        if center is None:
             return
-
-        point = self.points[self.selected_index]
-        if not self._point_is_visible(point):
+        x, y = center
+        if not (self.ax.get_xlim()[0] <= x <= self.ax.get_xlim()[1]
+                and self.ax.get_ylim()[0] <= y <= self.ax.get_ylim()[1]):
             return
-
         self.ax.scatter(
-            [point.x],
-            [point.y],
-            s=190,
-            facecolors="none",
-            edgecolors=SELECTED_RING,
-            linewidths=2.4,
-            zorder=9,
+            [x], [y], s=190, facecolors="none", edgecolors=SELECTED_RING,
+            linewidths=2.4, zorder=9,
         )
         self.ax.scatter(
-            [point.x],
-            [point.y],
-            s=62,
-            c=SELECTED_COLOR,
-            edgecolors="#000000",
-            linewidths=1.0,
-            zorder=10,
+            [x], [y], s=62, c=SELECTED_COLOR, edgecolors="#000000",
+            linewidths=1.0, zorder=10,
         )
+        info = (self._format_point_info(self.selected_index)
+                if self.selected_index is not None
+                else f"{self.pinned_label or 'Custom coordinates'}\nx: {x:g}\ny: {y:g}")
         self.ax.annotate(
-            self._format_point_info(self.selected_index),
-            xy=(point.x, point.y),
-            xytext=(14, 14),
-            textcoords="offset points",
-            color=TEXT_COLOR,
-            fontsize=9,
-            bbox={
-                "boxstyle": "round,pad=0.45",
-                "facecolor": TOOLTIP_BACKGROUND,
-                "edgecolor": TOOLTIP_EDGE,
-                "alpha": 0.94,
-            },
+            info, xy=(x, y), xytext=(14, 14), textcoords="offset points",
+            color=TEXT_COLOR, fontsize=9,
+            bbox={"boxstyle": "round,pad=0.45", "facecolor": TOOLTIP_BACKGROUND,
+                  "edgecolor": TOOLTIP_EDGE, "alpha": 0.94},
             arrowprops={"arrowstyle": "->", "color": TOOLTIP_EDGE, "lw": 1.0},
             zorder=11,
         )
 
-    # ------------------------------------------------------------------
-    # Search
-    # ------------------------------------------------------------------
-
-    def _on_search_changed(self, *_args: object) -> None:
-        query = self.search_var.get().strip().lower()
+    def _on_search_changed(self, *_args: object, show_matches: bool = True) -> None:
+        query = self.search_var.get().strip()
         self.results_listbox.delete(0, tk.END)
         self.listbox_indices = []
-
         if not query:
-            if self.selected_index is not None:
-                self.selected_index = None
-                self.draw_plot(keep_view=True)
+            # Editing a search isn't an explicit request to clear the pin.
+            # Only Clear or Esc clears selected coordinates.
+            self.search_feedback_var.set("Search by ideology name or type x,y coordinates.")
+            self._set_matches_visible(False)
+            return
+        coordinates = parse_coordinate_query(query)
+        if coordinates is not None:
+            self.search_feedback_var.set(
+                f"Coordinates ({coordinates[0]:g}, {coordinates[1]:g}) ready. Press Enter or Go."
+            )
+            self._set_matches_visible(False)
             return
 
         matches = [
-            (index, point)
-            for index, point in enumerate(self.points)
-            if query in point.name.lower()
-            or (point.group is not None and query in point.group.lower())
+            (index, point) for index, point in enumerate(self.points)
+            if query.casefold() in point.name.casefold()
+            or (point.group is not None and query.casefold() in point.group.casefold())
         ]
-        matches = matches[:MAX_SEARCH_RESULTS]
-
-        for index, point in matches:
+        matches.sort(key=lambda item: (
+            item[1].name.casefold() != query.casefold(),
+            not item[1].name.casefold().startswith(query.casefold()),
+            item[1].name.casefold(),
+        ))
+        for index, point in matches[:MAX_SEARCH_RESULTS]:
             group_text = f" — {point.group}" if point.group else ""
             self.results_listbox.insert(
                 tk.END, f"{point.name} ({point.x:g}, {point.y:g}){group_text}"
             )
             self.listbox_indices.append(index)
+        if matches:
+            self.results_listbox.config(height=min(5, len(self.listbox_indices)))
+            self.matches_title_var.set(f"{len(matches)} match(es) • click one or press Enter to select")
+            self.search_feedback_var.set(f"{len(matches)} matches • Enter selects the first")
+            self._set_matches_visible(show_matches)
+        else:
+            self.search_feedback_var.set(
+                "No matches at this detail level. Try a different level or x,y coordinates."
+            )
+            self._set_matches_visible(False)
 
     def _on_result_selected(self, _event: object = None) -> None:
         selection = self.results_listbox.curselection()
         if not selection:
             return
-
         listbox_index = int(selection[0])
         if listbox_index >= len(self.listbox_indices):
             return
-
         self.select_point(self.listbox_indices[listbox_index], focus=True)
 
     def _on_search_enter(self, _event: object = None) -> str:
+        query = self.search_var.get().strip()
+        coordinates = parse_coordinate_query(query)
+        if coordinates is not None:
+            if not all(WORLD_MIN <= value <= WORLD_MAX for value in coordinates):
+                self.search_feedback_var.set(
+                    f"Coordinates must be between {WORLD_MIN:g} and {WORLD_MAX:g} "
+                    "on both axes."
+                )
+                return "break"
+            if not all(COMPASS_MIN <= value <= COMPASS_MAX for value in coordinates):
+                self._enable_extremes_for_focus()
+            self.pinned_center = coordinates
+            self.pinned_label = "Custom coordinates"
+            self.custom_center = coordinates
+            self.selected_index = None
+            self.search_feedback_var.set(
+                f"Showing rings at ({coordinates[0]:g}, {coordinates[1]:g})."
+            )
+            self._update_overton_panel()
+            self._update_status()
+            self._set_matches_visible(False)
+            self.center_on_coordinate(*coordinates)
+            return "break"
+
         selection = self.results_listbox.curselection()
         if selection:
             self._on_result_selected()
-            return "break"
-
-        if self.listbox_indices:
+        elif self.listbox_indices:
             self.results_listbox.selection_clear(0, tk.END)
             self.results_listbox.selection_set(0)
             self.results_listbox.activate(0)
             self.select_point(self.listbox_indices[0], focus=True)
-            return "break"
-
+        elif query:
+            self.search_feedback_var.set(
+                "No ideology found. Enter an ideology name or coordinates as x,y."
+            )
         return "break"
+
+    def _enable_extremes_for_focus(self) -> None:
+        if not self.show_extremes_var.get():
+            previous_result_indices = list(self.listbox_indices)
+            self.show_extremes_var.set(True)
+            # Rebuild cells to include coordinates in the outer band.
+            self._apply_dataset(self.active_dataset_index)
+            self.listbox_indices = previous_result_indices
+            self._update_status()
 
     def _on_escape(self, _event: object = None) -> str:
         self.clear_selection()
         return "break"
 
     def clear_selection(self) -> None:
+        self.pinned_center = None
+        self.pinned_label = None
+        self.selected_index = None
+        self.custom_center = None
         self.search_var.set("")
         self.results_listbox.delete(0, tk.END)
         self.listbox_indices = []
-        self.selected_index = None
+        self._set_matches_visible(False)
+        self._update_overton_panel()
+        self._update_status()
         self.draw_plot(keep_view=True)
 
     def select_point(self, index: int, focus: bool = False) -> None:
         if index < 0 or index >= len(self.points):
             return
-
+        point = self.points[index]
+        if not self._point_is_in_current_graph_bounds(point):
+            self._enable_extremes_for_focus()
+        self.pinned_center = (point.x, point.y)
+        self.pinned_label = point.name
+        self.custom_center = None
         self.selected_index = index
+        self.search_feedback_var.set(f"Selected: {point.name}")
+        self._set_matches_visible(False)
+        self._update_overton_panel()
+        self._update_status()
         if focus:
-            self.center_on_point(self.points[index])
+            self.center_on_coordinate(point.x, point.y)
         else:
             self.draw_plot(keep_view=True)
-        self._update_status()
-
-    # ------------------------------------------------------------------
-    # Point info / selection
-    # ------------------------------------------------------------------
 
     def _format_point_info(self, index: int) -> str:
         point = self.points[index]
@@ -1719,7 +1946,7 @@ class NewPoliticalCompassApp:
 
         self.ax.set_xlim(*new_xlim)
         self.ax.set_ylim(*new_ylim)
-        self.draw_plot(keep_view=True)
+        self._preview_navigation()
 
     def _on_mouse_press(self, event: MouseEvent) -> None:
         if (
@@ -1741,6 +1968,16 @@ class NewPoliticalCompassApp:
             "bbox_height": float(self.ax.bbox.height),
         }
         self.is_dragging = False
+        self._cancel_navigation_refine()
+        # The already rendered Tk image can be translated immediately, without
+        # re-running Matplotlib for every mousemove. This also keeps text sharp
+        # because the final full draw happens only on mouse release.
+        self._pan_image_item = getattr(self.canvas, "_tkcanvas_image_region", None)
+        if self._pan_image_item is not None:
+            coords = self.canvas_widget.coords(self._pan_image_item)
+            self._pan_image_origin = (float(coords[0]), float(coords[1])) if len(coords) == 2 else None
+        else:
+            self._pan_image_origin = None
 
     def _on_mouse_move(self, event: MouseEvent) -> None:
         if self.drag_start is None or event.x is None or event.y is None:
@@ -1775,7 +2012,14 @@ class NewPoliticalCompassApp:
 
         self.ax.set_xlim(*new_xlim)
         self.ax.set_ylim(*new_ylim)
-        self.draw_plot(keep_view=True)
+        if self._pan_image_origin is not None and self._pan_image_item is not None:
+            # Move the raster to match the updated axes transformation.
+            actual_dx = (xlim[0] - new_xlim[0]) / width * bbox_width
+            actual_dy = -(ylim[0] - new_ylim[0]) / height * bbox_height
+            ox, oy = self._pan_image_origin
+            self.canvas_widget.coords(self._pan_image_item, ox + actual_dx, oy + actual_dy)
+        else:
+            self._preview_navigation()
 
     def _on_mouse_release(self, event: MouseEvent) -> None:
         if self.drag_start is None:
@@ -1784,8 +2028,13 @@ class NewPoliticalCompassApp:
         was_dragging = self.is_dragging
         self.drag_start = None
         self.is_dragging = False
+        if self._pan_image_origin is not None and self._pan_image_item is not None:
+            self.canvas_widget.coords(self._pan_image_item, *self._pan_image_origin)
+        self._pan_image_item = None
+        self._pan_image_origin = None
 
         if was_dragging:
+            self.draw_plot(keep_view=True)
             return
 
         if event.inaxes != self.ax:
@@ -1818,25 +2067,37 @@ class NewPoliticalCompassApp:
 
         return low, high
 
+    def _focus_bounds(self) -> Tuple[float, float, float, float]:
+        x_low, x_high = self.view_min_x, self.view_max_x
+        y_low, y_high = self.view_min_y, self.view_max_y
+        center = self._active_center()
+        if center is not None and self.show_overton_var.get():
+            padding = OVERTON_MAX_RADIUS + OVERTON_FOCUS_MARGIN
+            x_low = min(x_low, center[0] - padding)
+            x_high = max(x_high, center[0] + padding)
+            y_low = min(y_low, center[1] - padding)
+            y_high = max(y_high, center[1] + padding)
+        return x_low, x_high, y_low, y_high
+
     def _clamp_x_limits(self, low: float, high: float) -> Tuple[float, float]:
-        return self._clamp_limits(low, high, self.view_min_x, self.view_max_x)
+        x_low, x_high, _y_low, _y_high = self._focus_bounds()
+        return self._clamp_limits(low, high, x_low, x_high)
 
     def _clamp_y_limits(self, low: float, high: float) -> Tuple[float, float]:
-        return self._clamp_limits(low, high, self.view_min_y, self.view_max_y)
+        _x_low, _x_high, y_low, y_high = self._focus_bounds()
+        return self._clamp_limits(low, high, y_low, y_high)
 
-    def center_on_point(self, point: CompassPoint) -> None:
-        current_xlim = self.ax.get_xlim()
-        current_ylim = self.ax.get_ylim()
-
-        width = min(current_xlim[1] - current_xlim[0], SEARCH_FOCUS_SPAN)
-        height = min(current_ylim[1] - current_ylim[0], SEARCH_FOCUS_SPAN)
-
-        xlim = self._clamp_x_limits(point.x - width / 2, point.x + width / 2)
-        ylim = self._clamp_y_limits(point.y - height / 2, point.y + height / 2)
-
+    def center_on_coordinate(self, x: float, y: float) -> None:
+        width = SEARCH_FOCUS_SPAN if self.show_overton_var.get() else 6.0
+        height = width
+        xlim = self._clamp_x_limits(x - width / 2, x + width / 2)
+        ylim = self._clamp_y_limits(y - height / 2, y + height / 2)
         self.ax.set_xlim(*xlim)
         self.ax.set_ylim(*ylim)
         self.draw_plot(keep_view=True)
+
+    def center_on_point(self, point: CompassPoint) -> None:
+        self.center_on_coordinate(point.x, point.y)
 
     # ------------------------------------------------------------------
     # Status
@@ -1846,9 +2107,11 @@ class NewPoliticalCompassApp:
         dataset_label = self.datasets[self.active_dataset_index].label
         skipped_count = len(self.warnings) + len(self.category_warnings)
         warning_text = f" | {skipped_count} skipped row(s)" if skipped_count else ""
+        center = self._active_center()
+        center_text = f" | Center ({center[0]:g}, {center[1]:g})" if center else ""
         self.status_var.set(
             f"{dataset_label} | {len(self.points)} ideologies | "
-            f"{len(self.category_points)} categories{warning_text}"
+            f"{len(self.category_points)} categories{warning_text}{center_text}"
         )
 
 
